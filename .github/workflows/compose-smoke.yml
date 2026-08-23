@@ -73,6 +73,18 @@ jobs:
           summary_status=$(curl -sS -b "$COOKIES" -o /dev/null -w '%{http_code}' "$BASE/api/v1/health/summary")
           test "$summary_status" = "200"
 
+          # The authenticated home page, not just the API - this is a server
+          # component, so it exercises serverGet()'s direct server-to-server
+          # fetch to http://django:8000, a different code path from every
+          # curl check above (which all go through next's rewrite proxy and
+          # therefore never touch that internal hostname). This is the exact
+          # check that would have caught DJANGO_ALLOWED_HOSTS not accepting
+          # "django" - a real bug that shipped anyway because no check here
+          # loaded an actual page until this one was added.
+          home_status=$(curl -sS -b "$COOKIES" -o /tmp/home.html -w '%{http_code}' "$BASE/")
+          test "$home_status" = "200"
+          grep -q "SelfHealth" /tmp/home.html
+
           docs_status=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/v1/docs")
           test "$docs_status" = "200"
 

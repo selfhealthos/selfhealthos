@@ -25,7 +25,23 @@ env = environ.Env(
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DJANGO_DEBUG")
-ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+
+#: Always allowed, on top of whatever the operator sets. These are internal
+#: compose-network hostnames, not public addresses - they're fixed by
+#: compose.yaml's service names, not something an operator's own
+#: DJANGO_ALLOWED_HOSTS should need to know about:
+#:   - "django": frontend/src/lib/api/server.ts's serverGet() fetches
+#:     http://django:8000 directly from Next's server components (every
+#:     server-rendered page), bypassing next.config.ts's rewrite proxy
+#:     entirely since it's a server-to-server call, not a proxied browser
+#:     request - so the Host header it sends is literally "django:8000".
+#:   - "127.0.0.1": Docker's own healthcheck for this container calls itself
+#:     over loopback (see compose.yaml). Without this, the healthcheck can
+#:     never pass, which cascades into `next` never starting at all.
+INTERNAL_HOSTS = ["django", "127.0.0.1"]
+
+_configured_hosts = env("DJANGO_ALLOWED_HOSTS")
+ALLOWED_HOSTS = _configured_hosts + [h for h in INTERNAL_HOSTS if h not in _configured_hosts]
 CSRF_TRUSTED_ORIGINS = env("DJANGO_CSRF_TRUSTED_ORIGINS")
 SITE_URL = env("SITE_URL")
 
