@@ -17,10 +17,23 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
   {
     title: "Day",
     items: [
+      { href: "/entries", label: "Entries", icon: "▤" },
       { href: "/", label: "Today", icon: "●" },
       { href: "/trends", label: "Trends", icon: "▲" },
       { href: "/heatmap", label: "Heatmap", icon: "▩" },
     ],
+  },
+  {
+    title: "Wearable",
+    items: [
+      { href: "/sleep", label: "Sleep", icon: "☾" },
+      { href: "/heart", label: "Heart", icon: "♥" },
+      { href: "/activity", label: "Activity", icon: "▪" },
+    ],
+  },
+  {
+    title: "Fitness",
+    items: [{ href: "/workout", label: "Workout", icon: "◈" }],
   },
   {
     title: "Logged",
@@ -33,15 +46,8 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
       { href: "/labs", label: "Labs", icon: "◇" },
       { href: "/notes", label: "Notes", icon: "✎" },
       { href: "/docs", label: "Docs", icon: "☰" },
-      { href: "/office", label: "Office days", icon: "▦" },
-    ],
-  },
-  {
-    title: "Wearable",
-    items: [
-      { href: "/sleep", label: "Sleep", icon: "☾" },
-      { href: "/heart", label: "Heart", icon: "♥" },
-      { href: "/activity", label: "Activity", icon: "▪" },
+      { href: "/wfh", label: "WFH", icon: "▧" },
+      { href: "/reports", label: "Reports", icon: "▦" },
     ],
   },
 ];
