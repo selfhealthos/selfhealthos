@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+/* Tailwind's `dark:` variant defaults to `@media (prefers-color-scheme:
+   dark)`, which would make every ported `dark:bg-slate-900`-style class
+   ignore the theme toggle below and follow the OS instead. Redefine it to
+   Tailwind's documented data-attribute pattern so `dark:` classes - old and
+   new - all follow `data-theme`, which the no-FOUC script and ThemeToggle
+   always set explicitly to "dark" or "light" (default "dark"). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* --------------------------------------------------------------------------
+   Theme: dark by default, light on request
+   --------------------------------------------------------------------------
+
+   Brand: dark navy surfaces with a teal → blue → purple gradient accent (see
+   selfhealthos-style.png - the halftone "S" mark, the wordmark, the heatmap/
+   trend/score mockups). Dark is the app's own default regardless of OS
+   preference - the toggle in the nav sets `data-theme` on <html> and persists
+   the choice in localStorage; a small inline script in the root layout sets
+   the attribute before first paint so there is no flash of the wrong theme.
+   Chart series/score/status colours are a SEPARATE system below - they stay
+   the dataviz skill's validated palette almost unchanged (only the surface
+   they sit on is re-themed), because those hues encode real health-scoring
+   accessibility guarantees (colourblind separation, contrast) that brand
+   colour does not get to override. */
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-ink: var(--text-primary);
+  --color-ink-dim: var(--text-secondary);
+  --color-ink-muted: var(--text-muted);
+
+  --color-brand-teal: #2dd4bf;
+  --color-brand-blue: #3b82f6;
+  --color-brand-purple: #8b5cf6;
+
+  --color-good: #22c55e;
+  --color-warning: #eab308;
+  --color-critical: #ef4444;
+}
+
+:root {
+  color-scheme: dark;
+
+  --bg: #05070d;
+  --surface: #0d1420;
+  --surface-2: #131c2e;
+  --border: rgb(255 255 255 / 8%);
+  --text-primary: #f3f5f9;
+  --text-secondary: #9aa5ba;
+  --text-muted: #6d7890;
+
+  --brand-gradient: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 55%, #8b5cf6 100%);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f6f7fa;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --border: rgb(15 23 42 / 8%);
+  --text-primary: #0b1220;
+  --text-secondary: #4b5568;
+  --text-muted: #6b7488;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   Chart palette
+   --------------------------------------------------------------------------
+
+   Ported from the dataviz skill's validated default instance, unchanged in
+   hue - only --viz-surface (and the chrome tokens below it) is re-themed to
+   this app's navy surfaces. Re-validated with:
+     validate_palette.py "<dark hexes>" --mode dark --surface "#0d1420"
+     validate_palette.py "<light hexes>" --mode light --surface "#ffffff"
+   Both pass every check the reference instance passed. Do not recolour these
+   toward the brand gradient - the eight categorical slots, the diverging
+   Bristol pair, the sleep-stage trio and the five score bands are validated
+   as an ORDERED SET for colourblind separation and contrast; swapping any hue
+   in breaks that set without re-running the validator. Brand colour belongs
+   on chrome (nav, buttons, headings, the score ring's accent stroke), not on
+   data that has to stay legible under CVD.
+
+   The eight categorical slots are ASSIGNED IN ORDER AND NEVER CYCLED. A ninth
+   series does not get a ninth colour - it folds into "other" or the chart
+   becomes small multiples. */
+:root {
+  --viz-surface: var(--surface);
+
+  --viz-1: #3987e5; /* blue */
+  --viz-2: #d95926; /* orange */
+  --viz-3: #199e70; /* aqua */
+  --viz-4: #c98500; /* yellow */
+  --viz-5: #d55181; /* magenta */
+  --viz-6: #008300; /* green */
+  --viz-7: #9085e9; /* violet */
+  --viz-8: #e66767; /* red */
+
+  --viz-seq-1: #184f95;
+  --viz-seq-2: #256abf;
+  --viz-seq-3: #2a78d6;
+  --viz-seq-4: #3987e5;
+  --viz-seq-5: #6da7ec;
+  --viz-seq-6: #9ec5f4;
+
+  --viz-stage-deep: #3987e5;
+  --viz-stage-rem: #d95926;
+  --viz-stage-light: #199e70;
+  --viz-stage-awake: #64748b;
+
+  --viz-div-1: #cde2fb;
+  --viz-div-2: #6da7ec;
+  --viz-div-3: #256abf;
+  --viz-div-4: #a1a1aa;
+  --viz-div-5: #c43b2f;
+  --viz-div-6: #f07a55;
+  --viz-div-7: #ffcbb5;
+
+  --viz-normal-band: rgb(60 200 60 / 12%);
+  --viz-event-band: rgb(230 103 103 / 20%);
+
+  --viz-zone-fat-burn: rgb(249 115 22 / 12%);
+  --viz-zone-cardio: rgb(249 115 22 / 20%);
+  --viz-zone-peak: rgb(249 115 22 / 30%);
+
+  --viz-sleep-band: rgb(148 163 184 / 10%);
+
+  --viz-score-1: #7a2a28;
+  --viz-score-2: #7a4a1f;
+  --viz-score-3: #6e5c17;
+  --viz-score-4: #3f5f28;
+  --viz-score-5: #235c33;
+
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-critical: #d03b3b;
+
+  --viz-grid: #1c2740;
+  --viz-axis: #2b3855;
+  --viz-muted: #8b95ab;
+}
+
+:root[data-theme="light"] {
+  --viz-surface: var(--surface);
+
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+  --viz-7: #4a3aa7;
+  --viz-8: #e34948;
+
+  --viz-seq-1: #cde2fb;
+  --viz-seq-2: #9ec5f4;
+  --viz-seq-3: #6da7ec;
+  --viz-seq-4: #3987e5;
+  --viz-seq-5: #256abf;
+  --viz-seq-6: #184f95;
+
+  --viz-stage-deep: #2a78d6;
+  --viz-stage-rem: #eb6834;
+  --viz-stage-light: #1baf7a;
+  --viz-stage-awake: #94a3b8;
+
+  --viz-div-1: #14477f;
+  --viz-div-2: #3987e5;
+  --viz-div-3: #86b6ef;
+  --viz-div-4: #71717a;
+  --viz-div-5: #f0a3a3;
+  --viz-div-6: #d84a4a;
+  --viz-div-7: #7f1d1d;
+
+  --viz-normal-band: rgb(16 163 16 / 8%);
+  --viz-event-band: rgb(208 59 59 / 14%);
+
+  --viz-zone-fat-burn: rgb(234 88 12 / 8%);
+  --viz-zone-cardio: rgb(234 88 12 / 15%);
+  --viz-zone-peak: rgb(234 88 12 / 24%);
+
+  --viz-sleep-band: rgb(51 65 85 / 9%);
+
+  --viz-score-1: #e08a86;
+  --viz-score-2: #edb17d;
+  --viz-score-3: #f2d98c;
+  --viz-score-4: #b6d98f;
+  --viz-score-5: #77c47f;
+
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-critical: #d03b3b;
+
+  --viz-grid: #e2e8f0;
+  --viz-axis: #cbd5e1;
+  --viz-muted: #64748b;
+}
