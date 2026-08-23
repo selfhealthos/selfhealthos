@@ -1,0 +1,67 @@
+[project]
+name = "selfhealthos"
+version = "0.1.0"
+description = "Self-hosted nutrition and fitness tracker - REST API and MCP server over one Django service layer"
+requires-python = ">=3.12"
+
+dependencies = [
+    "django>=5.2,<6.0",
+    "django-ninja>=1.4",
+    "django-environ>=0.12",
+    "psycopg[binary]>=3.2",
+    "whitenoise>=6.8",
+    "gunicorn>=23.0",
+    "uvicorn[standard]>=0.34",
+    "celery[redis]>=5.4",
+    "redis>=5.2",
+    "uuid6>=2024.7.10",
+    # ImageField validation. Diet/document photos and the user avatar all use
+    # ImageField.
+    "pillow>=11.1",
+    # SDK 2.x renamed FastMCP to MCPServer and moved the package layout;
+    # mcp_server/app.py targets that API, so do not float across the major.
+    "mcp>=2.0,<3.0",
+    "starlette>=0.46",
+    # Fitbit OAuth and sync. cryptography holds provider credentials at rest;
+    # httpx is the only thing that talks to a third party.
+    "cryptography>=44.0",
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=6.0",
+    "factory-boy>=3.3",
+    "ruff>=0.9",
+    "watchdog[watchmedo]>=6.0",
+    "httpx>=0.28",
+]
+
+[tool.setuptools]
+# Not a distributable package; the container runs it from the source tree.
+py-modules = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "DJ", "SIM", "RUF"]
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "RUF012", # Django class attrs are conventionally mutable
+    "B008",   # django-ninja's File(...)/Form(...)/Query(...) are parameter
+              # markers evaluated once at import time, not per-request calls
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["selfhealthos", "apps", "mcp_server"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "selfhealthos.settings.test"
+python_files = ["test_*.py", "*_test.py"]
+addopts = "--strict-markers --reuse-db"
+testpaths = ["tests", "apps"]
