@@ -1,0 +1,105 @@
+name: Compose smoke test
+
+# Builds the real images from this PR and exercises the actual running stack
+# (not mocks) - signup, login, and the Health API - the same way an operator's
+# `docker compose up` would. Unit tests catch logic bugs; this catches the
+# integration-layer ones that only show up once the containers are wired
+# together (a missing rewrite, a healthcheck that can never pass, an env var
+# two services disagree on).
+on:
+  pull_request:
+
+jobs:
+  smoke:
+    name: docker compose up && smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write a CI .env
+        run: |
+          cp .env.example .env
+          # Only the dev overlay lines and the secret need to change - a real
+          # secret so nothing accidentally ships the placeholder, and no dev
+          # overlay so this exercises the same images docker-publish.yml ships.
+          SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          sed -i "s#^DJANGO_SECRET_KEY=.*#DJANGO_SECRET_KEY=${SECRET}#" .env
+          sed -i '/^COMPOSE_FILE=/d;/^COMPOSE_PATH_SEPARATOR=/d' .env
+
+      - name: docker compose build
+        run: docker compose build
+
+      - name: docker compose up
+        run: docker compose up -d
+
+      - name: Wait for every service to report healthy
+        run: |
+          for i in $(seq 1 60); do
+            unhealthy=$(docker compose ps --format json | jq -r 'select(.Health != "" and .Health != "healthy") | "\(.Service):\(.Health)"')
+            if [ -z "$unhealthy" ]; then
+              echo "all services healthy"
+              exit 0
+            fi
+            echo "waiting on: $unhealthy"
+            sleep 5
+          done
+          echo "::error::services never became healthy"
+          docker compose logs
+          exit 1
+
+      - name: Run migrations
+        run: docker compose exec -T django python manage.py migrate --noinput
+
+      - name: Smoke test the running stack
+        run: |
+          set -e
+          BASE="http://127.0.0.1"
+          COOKIES="$(mktemp)"
+
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/login")
+          test "$status" = "200"
+
+          csrf=$(curl -sS -c "$COOKIES" "$BASE/api/v1/auth/csrf" | python3 -c "import sys,json; print(json.load(sys.stdin)['csrf_token'])")
+
+          signup_status=$(curl -sS -b "$COOKIES" -c "$COOKIES" -o /tmp/signup.json -w '%{http_code}' \
+            -X POST "$BASE/api/v1/auth/signup" \
+            -H "Content-Type: application/json" -H "X-CSRFToken: $csrf" \
+            -d '{"username":"smoketest","password":"smoketest","birth_date":"1990-01-01","sex":""}')
+          test "$signup_status" = "201"
+
+          me_status=$(curl -sS -b "$COOKIES" -o /dev/null -w '%{http_code}' "$BASE/api/v1/auth/me")
+          test "$me_status" = "200"
+
+          summary_status=$(curl -sS -b "$COOKIES" -o /dev/null -w '%{http_code}' "$BASE/api/v1/health/summary")
+          test "$summary_status" = "200"
+
+          docs_status=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/api/v1/docs")
+          test "$docs_status" = "200"
+
+          # /mcp must be reachable at the same origin as the web app - this is
+          # exactly what the settings page's generated `claude mcp add`
+          # command assumes (see frontend/next.config.ts's rewrite).
+          mcp_status=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/mcp")
+          test "$mcp_status" = "401"
+
+          echo "all smoke checks passed"
+
+      - name: Frontend API types match the running backend
+        run: |
+          set -e
+          curl -sS http://127.0.0.1/api/v1/openapi.json -o frontend/openapi.json
+          cd frontend
+          npm ci
+          npm run generate:api
+          if ! git diff --exit-code -- src/lib/api/schema.d.ts; then
+            echo "::error::frontend/src/lib/api/schema.d.ts is stale - the backend API changed without regenerating it. Run 'npm run generate:api' in frontend/ against a running backend and commit the result."
+            exit 1
+          fi
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

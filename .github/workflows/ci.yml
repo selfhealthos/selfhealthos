@@ -1,0 +1,91 @@
+name: CI
+
+# Fast feedback: lint, format, and unit/integration tests. Runs directly on
+# pull requests and is also called by docker-publish.yml as a gate before any
+# image is pushed - `workflow_call` keeps that one definition instead of two
+# copies drifting apart.
+on:
+  pull_request:
+  workflow_call:
+
+jobs:
+  backend:
+    name: Backend (ruff, pytest)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: selfhealthos
+          POSTGRES_PASSWORD: selfhealthos
+          POSTGRES_DB: selfhealthos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U selfhealthos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv pip install --system -e ".[dev]"
+
+      - name: ruff check
+        working-directory: backend
+        run: ruff check .
+
+      - name: ruff format --check
+        working-directory: backend
+        run: ruff format --check .
+
+      - name: No un-migrated model changes
+        # A model field edited (even just its choices/label) without a
+        # matching migration is a real class of bug - it passes tests locally
+        # against a DB that already has the old migration state applied, and
+        # only breaks on a clean install.
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: ci-only-not-a-secret
+          DATABASE_URL: postgresql://selfhealthos:selfhealthos@localhost:5432/selfhealthos
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: pytest
+        working-directory: backend
+        env:
+          DJANGO_SECRET_KEY: ci-only-not-a-secret
+          DATABASE_URL: postgresql://selfhealthos:selfhealthos@localhost:5432/selfhealthos
+        run: pytest -q
+
+  frontend:
+    name: Frontend (typecheck, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: build
+        # Also runs Next's own lint + type-validity pass as part of the build.
+        working-directory: frontend
+        run: npm run build
