@@ -39,3 +39,4 @@ Thumbs.db
 
 # --- Local dev data volumes (if bind-mounted for convenience) ---
 .data/
+frontend/tsconfig.tsbuildinfo
