@@ -9,7 +9,8 @@ import { Card, Empty, PageHeader, shortDate, Stat } from "../ui";
 export const dynamic = "force-dynamic";
 
 /**
- * Office days: a calendar of the days worked in the office.
+ * Office calendar: the read side of the office-day record — the write side
+ * is `/wfh`, and the cross-metric comparison is `/reports/wfh`.
  *
  * **The source file is named `wfh.ndjson` and lists the opposite of what its
  * name says.** Reading it backwards has already inverted an analysis once, so
@@ -66,7 +67,7 @@ export default async function OfficePage({
 
   return (
     <>
-      <PageHeader title="Office days" subtitle={`Days worked in the office during ${office.year}.`}>
+      <PageHeader title="Office calendar" subtitle={`Days worked in the office during ${office.year}.`}>
         <div className="flex flex-wrap gap-1" role="group" aria-label="Year">
           {office.years.map((year) => (
             <Link
@@ -87,7 +88,13 @@ export default async function OfficePage({
 
       {coversFrom === null || coversTo === null ? (
         <Card>
-          <Empty>No office days recorded. They arrive from the phone app&apos;s calendar.</Empty>
+          <Empty>
+            No office days recorded yet. Mark some on the{" "}
+            <Link href="/wfh" className="underline hover:no-underline">
+              WFH
+            </Link>{" "}
+            page, or they&apos;ll arrive from the phone app&apos;s calendar.
+          </Empty>
         </Card>
       ) : (
         <>
