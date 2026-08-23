@@ -9,6 +9,7 @@ be able to drift.
 from ninja import NinjaAPI
 
 from apps.accounts.api import router as auth_router
+from apps.fitness.api import router as fitness_router
 from apps.health.api import router as health_router
 from apps.tokens.api import router as tokens_router
 from apps.tokens.auth import SessionAuthUnlessBearer, TokenAuth
@@ -52,3 +53,4 @@ api.add_router("/healthz", healthz_router)
 api.add_router("/auth", auth_router)
 api.add_router("/tokens", tokens_router)
 api.add_router("/health", health_router)
+api.add_router("/fitness", fitness_router)

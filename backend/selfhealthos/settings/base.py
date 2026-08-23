@@ -63,6 +63,7 @@ LOCAL_APPS = [
     "apps.tokens",
     "apps.api",
     "apps.health",
+    "apps.fitness",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + LOCAL_APPS
