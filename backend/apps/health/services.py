@@ -15,6 +15,7 @@ import itertools
 import logging
 from dataclasses import dataclass
 from datetime import date, time, timedelta
+from statistics import fmean
 
 from django.db.models import Count, Exists, Max, Min, OuterRef
 
@@ -1176,6 +1177,167 @@ def doc_list(user, *, limit: int = NOTE_LIMIT) -> list[dict]:
 
 
 # --------------------------------------------------------------------------
+# Entries timeline
+# --------------------------------------------------------------------------
+
+#: Every hand-logged, moment-in-time entry type - the `OccurredEntry`
+#: subclasses. Day-level records (habits, office days) and continuous
+#: wearable metrics have no single moment to sort by, so they have no place
+#: on a chronological timeline and stay off this list on purpose.
+_ENTRY_TYPES: tuple[tuple[str, str], ...] = (
+    ("diet", "Diet"),
+    ("exercise", "Exercise"),
+    ("gut", "Gut"),
+    ("vitals_bp", "Blood pressure"),
+    ("vitals_weight", "Weight"),
+    ("note", "Note"),
+    ("doc", "Document"),
+    ("body", "Body"),
+    ("fitness_test", "Fitness test"),
+)
+
+
+def _join_present(pairs: list[tuple[str, object]]) -> str:
+    """`"Waist 82cm · Hips 96cm"` from whichever fields were actually taken."""
+    return " · ".join(f"{label} {value}" for label, value in pairs if value is not None)
+
+
+def entries_for_day(user, on: date | None = None) -> dict:
+    """Every hand-logged entry on one day, oldest first.
+
+    One flat timeline across every entry type, rather than the type-by-type
+    lists `note_list`/`doc_list`/the deep-dive pages already give each their
+    own page - the question this answers is "what did I log, in order",
+    which cuts across all of them.
+
+    `on=None` is literally today in the subject's timezone - unlike `today()`
+    elsewhere in this module, this does not fall back to the latest day with
+    data. A fresh day with nothing logged yet is exactly what "Today" should
+    show on an entries timeline.
+    """
+    on = on or timeutils.local_date_of(_utcnow(), timeutils.tz_for(user))
+    live = {"created_by": user, "deleted_at__isnull": True, "local_date": on}
+    rows: list[dict] = []
+
+    for entry in DietEntry.objects.filter(**live):
+        rows.append({"id": entry.id, "type": "diet", "at": entry.occurred_at, "value": entry.name})
+
+    for entry in ExerciseEntry.objects.filter(**live):
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "exercise",
+                "at": entry.occurred_at,
+                "value": f"{entry.video_name} · {entry.duration_minutes} min",
+            }
+        )
+
+    for entry in BmEntry.objects.filter(**live):
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "gut",
+                "at": entry.occurred_at,
+                "value": f"Bristol {entry.bristol}",
+            }
+        )
+
+    for entry in BpEntry.objects.filter(**live):
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "vitals_bp",
+                "at": entry.occurred_at,
+                "value": f"{entry.systolic}/{entry.diastolic} mmHg",
+            }
+        )
+
+    for entry in WeightEntry.objects.filter(**live):
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "vitals_weight",
+                "at": entry.occurred_at,
+                "value": f"{entry.weight_kg:g} kg",
+            }
+        )
+
+    for entry in Note.objects.filter(**live):
+        body = _note_body(entry.content)
+        preview = body[:80] + ("…" if len(body) > 80 else "")
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "note",
+                "at": entry.occurred_at,
+                "value": entry.title or preview or "(empty note)",
+            }
+        )
+
+    for entry in Doc.objects.filter(**live):
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "doc",
+                "at": entry.occurred_at,
+                "value": entry.title or "Untitled document",
+            }
+        )
+
+    for entry in BodyMeasurement.objects.filter(**live):
+        summary = _join_present(
+            [
+                ("Waist", f"{entry.waist_cm:g}cm" if entry.waist_cm is not None else None),
+                ("Hips", f"{entry.hips_cm:g}cm" if entry.hips_cm is not None else None),
+                ("Neck", f"{entry.neck_cm:g}cm" if entry.neck_cm is not None else None),
+                (
+                    "Body fat",
+                    f"{entry.body_fat_pct:g}%" if entry.body_fat_pct is not None else None,
+                ),
+            ]
+        )
+        rows.append(
+            {"id": entry.id, "type": "body", "at": entry.occurred_at, "value": summary or "—"}
+        )
+
+    for entry in FitnessTest.objects.filter(**live):
+        summary = _join_present(
+            [
+                ("Grip", f"{entry.grip_kg:g}kg" if entry.grip_kg is not None else None),
+                (
+                    "Balance",
+                    f"{entry.single_leg_balance_s:g}s"
+                    if entry.single_leg_balance_s is not None
+                    else None,
+                ),
+                (
+                    "Sit-to-stand",
+                    f"{entry.sit_to_stand_reps}" if entry.sit_to_stand_reps is not None else None,
+                ),
+                (
+                    "Dead hang",
+                    f"{entry.dead_hang_s:g}s" if entry.dead_hang_s is not None else None,
+                ),
+            ]
+        )
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "fitness_test",
+                "at": entry.occurred_at,
+                "value": summary or "—",
+            }
+        )
+
+    labels = dict(_ENTRY_TYPES)
+    for row in rows:
+        row["label"] = labels[row["type"]]
+    rows.sort(key=lambda r: r["at"])
+
+    return {"date": on, "entries": rows}
+
+
+# --------------------------------------------------------------------------
 # Office days
 # --------------------------------------------------------------------------
 
@@ -1217,6 +1379,154 @@ def office_days(user, *, year: int | None = None) -> dict:
         "covers_from": bounds["first"],
         "covers_to": bounds["last"],
     }
+
+
+#: The handful of metrics with a direction nobody would dispute - "more
+#: steps" and "more sleep" are not the same kind of claim, so only these get
+#: an arrow in the report. Every other metric still gets its three bucket
+#: means; it just doesn't get told which one is "better", the same restraint
+#: `scoring.py`'s cited thresholds exist for elsewhere.
+_HIGHER_IS_BETTER = {
+    "steps",
+    "distance_km",
+    "floors",
+    "very_active_minutes",
+    "fairly_active_minutes",
+    "active_zone_minutes",
+    "calories_burned",
+    "hrv_rmssd",
+    "sleep_efficiency",
+}
+_LOWER_IS_BETTER = {"resting_hr", "sedentary_minutes"}
+
+_WFH_BUCKETS = ("wfh", "office", "weekend")
+
+
+def office_report(user, *, days: int | None = None) -> dict:
+    """Every tracked metric, averaged by day type: WFH, office, weekend.
+
+    Three buckets partition every day with data, mutually exclusively:
+
+    - "weekend": Saturday or Sunday, regardless of any office-day marking.
+    - "office": a weekday inside the office-day record's covered range,
+      marked worked.
+    - "wfh": a weekday inside that covered range, not marked worked.
+
+    A weekday outside the covered range is excluded rather than assumed
+    "wfh" - see `OfficeDay`: absence means unknown, not work-from-home.
+    Lumping unknown days into "wfh" would quietly bias that bucket with
+    every day before office days were ever tracked.
+
+    `days=None` is "all time": bounded by `rollups.data_span`, not by a
+    literal scan from year one.
+    """
+    from . import rollups
+
+    end = timeutils.local_date_of(_utcnow(), timeutils.tz_for(user))
+    if days is None:
+        start = rollups.data_span(user)[0] or end
+    else:
+        start = end - timedelta(days=max(1, days) - 1)
+
+    office_rows = OfficeDay.objects.filter(created_by=user, deleted_at__isnull=True)
+    bounds = office_rows.aggregate(first=Min("local_date"), last=Max("local_date"))
+    covers_from, covers_to = bounds["first"], bounds["last"]
+    office_days = set(
+        office_rows.filter(local_date__gte=start, local_date__lte=end).values_list(
+            "local_date", flat=True
+        )
+    )
+
+    buckets: dict[date, str] = {}
+    excluded = 0
+    cursor = start
+    while cursor <= end:
+        if cursor.weekday() >= 5:
+            buckets[cursor] = "weekend"
+        elif covers_from and covers_from <= cursor <= covers_to:
+            buckets[cursor] = "office" if cursor in office_days else "wfh"
+        else:
+            excluded += 1
+        cursor += timedelta(days=1)
+
+    day_counts = {b: sum(1 for v in buckets.values() if v == b) for b in _WFH_BUCKETS}
+
+    metrics_out = []
+    for definition in metric_defs.DAILY:
+        if definition.key == "office_day":
+            continue  # circular: this is literally what defines the buckets
+
+        rows = (
+            DailyMetric.objects.filter(user=user)
+            .series(definition.key, start, end)
+            .values_list("local_date", "value")
+        )
+        by_bucket: dict[str, list[float]] = {b: [] for b in _WFH_BUCKETS}
+        for local_date, value in rows:
+            bucket = buckets.get(local_date)
+            if bucket:
+                by_bucket[bucket].append(value)
+
+        present = {b: vals for b, vals in by_bucket.items() if vals}
+        if len(present) < 2:
+            continue  # not enough overlapping data yet to compare
+
+        means = {b: fmean(vals) for b, vals in present.items()}
+        overall = fmean([v for vals in present.values() for v in vals])
+        spread = max(means.values()) - min(means.values())
+        swing_pct = (spread / overall * 100) if overall else None
+
+        direction = (
+            "up"
+            if definition.key in _HIGHER_IS_BETTER
+            else "down"
+            if definition.key in _LOWER_IS_BETTER
+            else None
+        )
+
+        metrics_out.append(
+            {
+                "metric": definition.key,
+                "label": definition.label,
+                "unit": definition.unit,
+                "direction": direction,
+                "wfh": means.get("wfh"),
+                "office": means.get("office"),
+                "weekend": means.get("weekend"),
+                "wfh_days": len(by_bucket["wfh"]),
+                "office_days": len(by_bucket["office"]),
+                "weekend_days": len(by_bucket["weekend"]),
+                "swing_pct": swing_pct,
+            }
+        )
+
+    metrics_out.sort(key=lambda m: m["swing_pct"] or 0, reverse=True)
+
+    return {
+        "start": start,
+        "end": end,
+        "days": {**day_counts, "excluded": excluded},
+        "covers_from": covers_from,
+        "covers_to": covers_to,
+        "metrics": metrics_out,
+    }
+
+
+def set_office_day(user, local_date: date, *, worked: bool) -> dict:
+    """Mark or unmark one day as worked in the office, from the portal.
+
+    Unique on (created_by, local_date) regardless of `deleted_at` - see
+    `OfficeDay` - so re-marking a day the phone sync (or an earlier click)
+    already tombstoned updates that same row rather than colliding with its
+    unique constraint. This is the portal write path `DeviceEntry` describes:
+    no `client_id`, since there is no phone-side row to reconcile against.
+    """
+    row, _ = OfficeDay.objects.update_or_create(
+        created_by=user,
+        local_date=local_date,
+        defaults={"deleted_at": None if worked else _utcnow()},
+    )
+    return {"local_date": row.local_date, "worked": row.deleted_at is None}
 
 
 # --------------------------------------------------------------------------

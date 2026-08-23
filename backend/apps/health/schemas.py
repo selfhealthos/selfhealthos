@@ -435,6 +435,22 @@ class HealthDocOut(Schema):
     image_url: str | None = None
 
 
+# -- entries timeline --------------------------------------------------------
+
+
+class HealthEntryOut(Schema):
+    id: UUID
+    type: str
+    label: str
+    at: datetime
+    value: str
+
+
+class HealthEntriesDayOut(Schema):
+    date: date
+    entries: list[HealthEntryOut]
+
+
 # -- office days ------------------------------------------------------------
 
 
@@ -453,6 +469,50 @@ class HealthOfficeOut(Schema):
     #: absence means unknown, not work-from-home.
     covers_from: date | None = None
     covers_to: date | None = None
+
+
+class HealthOfficeDayOut(Schema):
+    local_date: date
+    worked: bool
+
+
+class HealthOfficeReportDaysOut(Schema):
+    wfh: int
+    office: int
+    weekend: int
+    #: Weekdays inside the window but outside the office-day record's
+    #: coverage - unclassifiable, not counted as either bucket.
+    excluded: int
+
+
+class HealthOfficeReportMetricOut(Schema):
+    metric: str
+    label: str
+    unit: str
+    #: "up" or "down" - which bucket mean is the good one. Null for most
+    #: metrics: the report states the numbers and lets you judge them
+    #: rather than asserting a direction the codebase doesn't otherwise back.
+    direction: str | None = None
+    wfh: float | None = None
+    office: float | None = None
+    weekend: float | None = None
+    wfh_days: int
+    office_days: int
+    weekend_days: int
+    #: The spread across buckets as a percentage of their overall mean, so a
+    #: five-bpm resting-heart-rate swing and a two-thousand-step swing can be
+    #: ranked on one scale. Used to order "biggest swings", not shown as a
+    #: verdict.
+    swing_pct: float | None = None
+
+
+class HealthOfficeReportOut(Schema):
+    start: date
+    end: date
+    days: HealthOfficeReportDaysOut
+    covers_from: date | None = None
+    covers_to: date | None = None
+    metrics: list[HealthOfficeReportMetricOut]
 
 
 # -- sleep ------------------------------------------------------------------

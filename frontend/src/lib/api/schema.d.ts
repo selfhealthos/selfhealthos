@@ -260,6 +260,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every hand-logged entry on one day, oldest first */
+        get: operations["getHealthEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/today": {
         parameters: {
             query?: never;
@@ -516,6 +533,41 @@ export interface paths {
         };
         /** Days worked in the office, by year */
         get: operations["getHealthOffice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/office/days/{on}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark a day as worked in the office */
+        put: operations["setHealthOfficeDay"];
+        post?: never;
+        /** Unmark a day as worked in the office */
+        delete: operations["unsetHealthOfficeDay"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/office/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every metric averaged by day type: WFH, office, weekend */
+        get: operations["getHealthOfficeReport"];
         put?: never;
         post?: never;
         delete?: never;
@@ -863,6 +915,91 @@ export interface paths {
          *     was lost merges to the same rows on the second attempt.
          */
         post: operations["syncHealthEntries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fitness/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The fixed exercise-video libraries */
+        get: operations["listFitnessPlaylists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fitness/playlists/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One playlist's exercises */
+        get: operations["getFitnessPlaylist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fitness/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Minutes and clips completed today */
+        get: operations["getFitnessStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fitness/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recently completed exercise clips */
+        get: operations["listFitnessRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fitness/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record one completed exercise clip */
+        post: operations["completeFitnessExercise"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1320,6 +1457,35 @@ export interface components {
              * Format: date-time
              */
             at: string;
+        };
+        /** HealthEntriesDayOut */
+        HealthEntriesDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Entries */
+            entries: components["schemas"]["HealthEntryOut"][];
+        };
+        /** HealthEntryOut */
+        HealthEntryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Type */
+            type: string;
+            /** Label */
+            label: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Value */
+            value: string;
         };
         /** HealthTrendOut */
         HealthTrendOut: {
@@ -1895,6 +2061,72 @@ export interface components {
             covers_from?: string | null;
             /** Covers To */
             covers_to?: string | null;
+        };
+        /** HealthOfficeDayOut */
+        HealthOfficeDayOut: {
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Worked */
+            worked: boolean;
+        };
+        /** HealthOfficeReportDaysOut */
+        HealthOfficeReportDaysOut: {
+            /** Wfh */
+            wfh: number;
+            /** Office */
+            office: number;
+            /** Weekend */
+            weekend: number;
+            /** Excluded */
+            excluded: number;
+        };
+        /** HealthOfficeReportMetricOut */
+        HealthOfficeReportMetricOut: {
+            /** Metric */
+            metric: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Direction */
+            direction?: string | null;
+            /** Wfh */
+            wfh?: number | null;
+            /** Office */
+            office?: number | null;
+            /** Weekend */
+            weekend?: number | null;
+            /** Wfh Days */
+            wfh_days: number;
+            /** Office Days */
+            office_days: number;
+            /** Weekend Days */
+            weekend_days: number;
+            /** Swing Pct */
+            swing_pct?: number | null;
+        };
+        /** HealthOfficeReportOut */
+        HealthOfficeReportOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            days: components["schemas"]["HealthOfficeReportDaysOut"];
+            /** Covers From */
+            covers_from?: string | null;
+            /** Covers To */
+            covers_to?: string | null;
+            /** Metrics */
+            metrics: components["schemas"]["HealthOfficeReportMetricOut"][];
         };
         /**
          * HealthSleepColumnOut
@@ -2994,6 +3226,72 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** FitnessPlaylistOut */
+        FitnessPlaylistOut: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Source Label */
+            source_label: string;
+            /** Logged As */
+            logged_as: string;
+            /** Exercise Count */
+            exercise_count: number;
+        };
+        /** FitnessExerciseOut */
+        FitnessExerciseOut: {
+            /** Video Id */
+            video_id: string;
+            /** Title */
+            title: string;
+            /** Duration S */
+            duration_s: number;
+        };
+        /** FitnessPlaylistDetailOut */
+        FitnessPlaylistDetailOut: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /** Source Label */
+            source_label: string;
+            /** Logged As */
+            logged_as: string;
+            /** Exercises */
+            exercises: components["schemas"]["FitnessExerciseOut"][];
+        };
+        /** FitnessStatsOut */
+        FitnessStatsOut: {
+            /** Minutes Today */
+            minutes_today: number;
+            /** Completed Today */
+            completed_today: number;
+        };
+        /** FitnessSessionOut */
+        FitnessSessionOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Video Name */
+            video_name: string;
+            /** Duration S */
+            duration_s: number;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+        };
+        /** FitnessCompleteIn */
+        FitnessCompleteIn: {
+            /** Video Name */
+            video_name: string;
+            /** Duration S */
+            duration_s: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -3338,6 +3636,28 @@ export interface operations {
             };
         };
     };
+    getHealthEntries: {
+        parameters: {
+            query?: {
+                on?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthEntriesDayOut"];
+                };
+            };
+        };
+    };
     getHealthToday: {
         parameters: {
             query?: never;
@@ -3647,6 +3967,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOfficeOut"];
+                };
+            };
+        };
+    };
+    setHealthOfficeDay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                on: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOfficeDayOut"];
+                };
+            };
+        };
+    };
+    unsetHealthOfficeDay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                on: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOfficeDayOut"];
+                };
+            };
+        };
+    };
+    getHealthOfficeReport: {
+        parameters: {
+            query?: {
+                days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOfficeReportOut"];
                 };
             };
         };
@@ -4028,6 +4414,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthSyncResultOut"];
+                };
+            };
+        };
+    };
+    listFitnessPlaylists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessPlaylistOut"][];
+                };
+            };
+        };
+    };
+    getFitnessPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessPlaylistDetailOut"];
+                };
+            };
+        };
+    };
+    getFitnessStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessStatsOut"];
+                };
+            };
+        };
+    };
+    listFitnessRecent: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessSessionOut"][];
+                };
+            };
+        };
+    };
+    completeFitnessExercise: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FitnessCompleteIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessStatsOut"];
                 };
             };
         };

@@ -42,7 +42,12 @@ export type HealthBody = components["schemas"]["HealthBodyOut"];
 export type HealthLabMarker = components["schemas"]["HealthLabMarkerOut"];
 export type HealthNote = components["schemas"]["HealthNoteOut"];
 export type HealthDoc = components["schemas"]["HealthDocOut"];
+export type HealthEntriesDay = components["schemas"]["HealthEntriesDayOut"];
+export type HealthEntry = components["schemas"]["HealthEntryOut"];
 export type HealthOffice = components["schemas"]["HealthOfficeOut"];
+export type HealthOfficeDay = components["schemas"]["HealthOfficeDayOut"];
+export type HealthOfficeReport = components["schemas"]["HealthOfficeReportOut"];
+export type HealthOfficeReportMetric = components["schemas"]["HealthOfficeReportMetricOut"];
 export type HealthSleepHistory = components["schemas"]["HealthSleepHistoryOut"];
 export type HealthSleepSession = components["schemas"]["HealthSleepSessionOut"];
 export type HealthNight = components["schemas"]["HealthNightOut"];
@@ -56,3 +61,12 @@ export type HealthActivity = components["schemas"]["HealthActivityOut"];
 export type HealthActivityHistory = components["schemas"]["HealthActivityHistoryOut"];
 export type HealthActivityDay = components["schemas"]["HealthActivityDayOut"];
 export type HealthActivitySeries = components["schemas"]["HealthActivitySeriesOut"];
+
+// Fitness - the workout player. Prefixed with the app label like everything
+// else, not "Health": these read a fixed playlist config and log through
+// `apps.health`'s ExerciseEntry, but they aren't part of the Health domain.
+export type FitnessPlaylist = components["schemas"]["FitnessPlaylistOut"];
+export type FitnessPlaylistDetail = components["schemas"]["FitnessPlaylistDetailOut"];
+export type FitnessExercise = components["schemas"]["FitnessExerciseOut"];
+export type FitnessStats = components["schemas"]["FitnessStatsOut"];
+export type FitnessSession = components["schemas"]["FitnessSessionOut"];

@@ -31,6 +31,7 @@ from .schemas import (
     HealthDayOut,
     HealthDietLogOut,
     HealthDocOut,
+    HealthEntriesDayOut,
     HealthEntrySyncIn,
     HealthExchangeIn,
     HealthGutOut,
@@ -44,7 +45,9 @@ from .schemas import (
     HealthMetricOut,
     HealthNightOut,
     HealthNoteOut,
+    HealthOfficeDayOut,
     HealthOfficeOut,
+    HealthOfficeReportOut,
     HealthSleepHistoryOut,
     HealthSummaryOut,
     HealthSyncQueued,
@@ -88,6 +91,16 @@ def list_metrics(request):
 )
 def get_day(request, on: date):
     return services.day(request.auth, on)
+
+
+@router.get(
+    "/entries",
+    response=HealthEntriesDayOut,
+    summary="Every hand-logged entry on one day, oldest first",
+    operation_id="getHealthEntries",
+)
+def get_entries(request, on: date | None = None):
+    return services.entries_for_day(request.auth, on)
 
 
 @router.get(
@@ -279,6 +292,40 @@ def get_docs(request, limit: int = 200):
 )
 def get_office(request, year: int | None = None):
     return services.office_days(request.auth, year=year)
+
+
+# Registered as two path operations rather than one PATCH taking a boolean
+# body, matching the PUT/DELETE shape `/connections/{provider}` already uses
+# for "set" and "unset": the calendar's click handler wants one call per tap,
+# not a body to construct.
+@router.put(
+    "/office/days/{on}",
+    response=HealthOfficeDayOut,
+    summary="Mark a day as worked in the office",
+    operation_id="setHealthOfficeDay",
+)
+def set_office_day(request, on: date):
+    return services.set_office_day(request.auth, on, worked=True)
+
+
+@router.delete(
+    "/office/days/{on}",
+    response=HealthOfficeDayOut,
+    summary="Unmark a day as worked in the office",
+    operation_id="unsetHealthOfficeDay",
+)
+def unset_office_day(request, on: date):
+    return services.set_office_day(request.auth, on, worked=False)
+
+
+@router.get(
+    "/office/report",
+    response=HealthOfficeReportOut,
+    summary="Every metric averaged by day type: WFH, office, weekend",
+    operation_id="getHealthOfficeReport",
+)
+def get_office_report(request, days: int | None = None):
+    return services.office_report(request.auth, days=days)
 
 
 @router.get(
