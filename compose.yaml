@@ -1,0 +1,153 @@
+name: selfhealthos
+
+# Base stack, shaped for a self-hosted deployment. The dev overlay in
+# compose.dev.yaml layers bind mounts and hot reload on top.
+#
+# No bundled reverse proxy (see CLAUDE.md): `next` is the only service that
+# publishes a port, and it proxies /api, /admin, /media, /static and /mcp to
+# their own containers over the internal compose network (see
+# frontend/next.config.ts). That keeps the session cookie first-party without
+# a Caddy/nginx hop, and means the MCP endpoint needs no TLS to work.
+
+x-backend-env: &backend-env
+  DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-selfhealthos.settings.prod}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required - copy .env.example to .env and set one}
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?required - the hostname or IP you'll reach this instance at, e.g. localhost}
+  DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:?required - e.g. http://localhost}
+  DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+  DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-UTC}
+  DATABASE_URL: ${DATABASE_URL:?required}
+  REDIS_URL: ${REDIS_URL:?required}
+  SITE_URL: ${SITE_URL:?required - the full URL you'll reach this instance at, e.g. http://localhost}
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+  PYTHONUNBUFFERED: "1"
+
+x-backend-base: &backend-base
+  build:
+    context: ./backend
+  environment: *backend-env
+  volumes:
+    - media:/app/media
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  django:
+    <<: *backend-base
+    command:
+      - gunicorn
+      - selfhealthos.asgi:application
+      - --bind=0.0.0.0:8000
+      - --worker-class=uvicorn.workers.UvicornWorker
+      - --workers=3
+      - --access-logfile=-
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/api/v1/healthz", timeout=4).status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  mcp:
+    <<: *backend-base
+    command:
+      - uvicorn
+      - mcp_server.app:app
+      - --host=0.0.0.0
+      - --port=8080
+      - --no-access-log
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8080/healthz", timeout=4).status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Fitbit sync/backfill and rollup jobs. Kept out of request handlers - a
+  # week of Fitbit backfill is ~90 HTTP round trips.
+  worker:
+    <<: *backend-base
+    command:
+      - celery
+      - -A
+      - selfhealthos
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+      - --queues=celery
+    healthcheck:
+      # CMD-SHELL, not CMD: exec form does no variable expansion, so $HOSTNAME
+      # would be pinged literally and every check fails against a live worker.
+      test: ["CMD-SHELL", "celery -A selfhealthos inspect ping -d celery@$$HOSTNAME --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
+  next:
+    build:
+      context: ./frontend
+      target: runner
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://django:8000}
+      INTERNAL_MCP_URL: ${INTERNAL_MCP_URL:-http://mcp:8080}
+    ports:
+      - "${HTTP_PORT:-80}:3000"
+    depends_on:
+      django:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  media:

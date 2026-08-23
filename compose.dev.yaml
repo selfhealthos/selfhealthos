@@ -1,0 +1,79 @@
+# Dev overlay: bind-mounted source and hot reload.
+# Activated automatically via COMPOSE_FILE in .env - plain `docker compose up`
+# picks it up. Production omits COMPOSE_FILE so only compose.yaml applies.
+
+x-backend-dev: &backend-dev
+  build:
+    context: ./backend
+    target: dev
+  environment:
+    # Docker Desktop's Windows/Mac file sharing does not forward inotify
+    # events, so uvicorn --reload and watchmedo both sit there seeing nothing
+    # change. Polling is the only thing that actually detects an edit there.
+    WATCHFILES_FORCE_POLLING: "true"
+  volumes:
+    - ./backend:/app
+    - media:/app/media
+
+services:
+  db:
+    # Exposed on the host so you can point psql/a GUI client at it while developing.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  django:
+    <<: *backend-dev
+    command:
+      - uvicorn
+      - selfhealthos.asgi:application
+      - --host=0.0.0.0
+      - --port=8000
+      - --reload
+      - --reload-dir=/app
+
+  mcp:
+    <<: *backend-dev
+    command:
+      - uvicorn
+      - mcp_server.app:app
+      - --host=0.0.0.0
+      - --port=8080
+      - --reload
+      - --reload-dir=/app
+
+  worker:
+    <<: *backend-dev
+    # watchdog restarts the worker on save; Celery has no reloader of its own.
+    command:
+      - watchmedo
+      - auto-restart
+      - --debug-force-polling
+      - --directory=/app
+      - --pattern=*.py
+      - --recursive
+      - --
+      - celery
+      - -A
+      - selfhealthos
+      - worker
+      - --loglevel=INFO
+      - --concurrency=2
+      - --queues=celery
+
+  next:
+    build:
+      context: ./frontend
+      target: dev
+    environment:
+      NODE_ENV: development
+    command: ["npm", "run", "dev"]
+    volumes:
+      - ./frontend:/app
+      # Anonymous volume keeps the image's node_modules from being shadowed
+      # by the (empty, or Windows-built) host directory.
+      - /app/node_modules
+      - /app/.next
