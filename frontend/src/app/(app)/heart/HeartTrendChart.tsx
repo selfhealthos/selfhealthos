@@ -124,8 +124,7 @@ export function HeartTrendChart({
   // to these, where the reference is the shaded band rather than the axis.
   const spread = drawable.flatMap((one) => [
     ...one.points.map((point) => point.value),
-    one.baseline?.low ?? Infinity,
-    one.baseline?.high ?? -Infinity,
+    ...(one.baseline ? [one.baseline.low, one.baseline.high] : []),
   ]);
   const yMin = Math.max(0, Math.floor((Math.min(...spread) - 5) / STEP) * STEP);
   const yMax = Math.ceil((Math.max(...spread) + 5) / STEP) * STEP;
