@@ -1,0 +1,41 @@
+# --- Python / Django (backend/) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+backend/staticfiles/
+backend/media/
+*.sqlite3
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / Next.js (frontend/) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+frontend/npm-debug.log*
+frontend/.env.local
+# Fetched fresh from a live backend to regenerate schema.d.ts (see CLAUDE.md);
+# schema.d.ts is the committed source of truth, this is just scratch input.
+frontend/openapi.json
+
+# --- Docker / compose local overrides ---
+docker-compose.override.yml
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Local dev data volumes (if bind-mounted for convenience) ---
+.data/
