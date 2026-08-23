@@ -225,37 +225,6 @@ async function WindowView({ days }: { days: number }) {
         </Card>
       ) : (
         <div className="space-y-4">
-          {/* The chart leads. It is the only thing on the page that answers
-              "am I moving enough" in one look; the tiles beneath it are the
-              same answer in numbers. */}
-          <Card
-            title="Every day in the window"
-            subtitle="One scale for all of it: 200 steps is one unit, so a gridline is 2,000 steps, ten minutes and ten bpm at once. Gaps are days with no recording."
-          >
-            <MasterLegend overlays={overlays} />
-            <ActivityTrendChart
-              start={history.start}
-              end={history.end}
-              goal={history.goal}
-              bars={history.bars.map((bar) => ({
-                date: bar.date,
-                steps: bar.steps,
-                activeMinutes: bar.active_minutes ?? null,
-                band: bar.band ?? null,
-              }))}
-              trailing={history.trailing}
-              overlays={overlays}
-            />
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Height is how far you went and colour is how hard: a tall pale bar is a day of
-              pottering that happened to cover ground, which was an identical mark to a real walk
-              before. The three lines share the bars&rsquo; axis because each of them lives inside
-              0–100 in its own unit — which makes their crossings real, and also means resting
-              heart rate moving 62 to 68 is six percent of this axis and reads nearly flat. The gap
-              between active and vigorous minutes is the one worth watching.
-            </p>
-          </Card>
-
           {/* The four numbers that answer "how am I doing", stated as
               comparisons rather than as bare values - an average step count on
               its own is a number nobody can act on. */}
@@ -316,6 +285,37 @@ async function WindowView({ days }: { days: number }) {
               sub={`waking hours per day, over ${summary.sitting_days} day${summary.sitting_days === 1 ? "" : "s"}`}
             />
           </div>
+
+          {/* The chart leads. It is the only thing on the page that answers
+              "am I moving enough" in one look; the tiles above it are the
+              same answer in numbers. */}
+          <Card
+            title="Every day in the window"
+            subtitle="One scale for all of it: 200 steps is one unit, so a gridline is 2,000 steps, ten minutes and ten bpm at once. Gaps are days with no recording."
+          >
+            <MasterLegend overlays={overlays} />
+            <ActivityTrendChart
+              start={history.start}
+              end={history.end}
+              goal={history.goal}
+              bars={history.bars.map((bar) => ({
+                date: bar.date,
+                steps: bar.steps,
+                activeMinutes: bar.active_minutes ?? null,
+                band: bar.band ?? null,
+              }))}
+              trailing={history.trailing}
+              overlays={overlays}
+            />
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Height is how far you went and colour is how hard: a tall pale bar is a day of
+              pottering that happened to cover ground, which was an identical mark to a real walk
+              before. The three lines share the bars&rsquo; axis because each of them lives inside
+              0–100 in its own unit — which makes their crossings real, and also means resting
+              heart rate moving 62 to 68 is six percent of this axis and reads nearly flat. The gap
+              between active and vigorous minutes is the one worth watching.
+            </p>
+          </Card>
 
           <Card
             title="Every day, scored"

@@ -194,6 +194,17 @@ async function WindowView({ days }: { days: number }) {
         </Card>
       ) : (
         <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Baseline label="HRV (RMSSD)" unit="ms" latest={latest(hrv)} series={hrv} />
+            <Baseline
+              label="Resting heart rate"
+              unit="bpm"
+              latest={latest(resting)}
+              series={resting}
+            />
+            <ZoneMix rows={history.rows} columns={history.columns} />
+          </div>
+
           <Card
             title="Recovery, against your own baseline"
             subtitle="HRV and resting heart rate share one scale because both live inside 0–100 in their own units. Each band is that signal's usual range over the last 30 days."
@@ -207,17 +218,6 @@ async function WindowView({ days }: { days: number }) {
               above is the pattern that precedes most people noticing they are unwell.
             </p>
           </Card>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Baseline label="HRV (RMSSD)" unit="ms" latest={latest(hrv)} series={hrv} />
-            <Baseline
-              label="Resting heart rate"
-              unit="bpm"
-              latest={latest(resting)}
-              series={resting}
-            />
-            <ZoneMix rows={history.rows} columns={history.columns} />
-          </div>
 
           <Card
             title="Every day in the window"

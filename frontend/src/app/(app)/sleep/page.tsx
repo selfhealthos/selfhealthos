@@ -97,37 +97,6 @@ export default async function SleepPage({
         </Card>
       ) : (
         <div className="space-y-4">
-          {/* The chart leads. It is the only thing on the page that answers
-              "how is my sleep" in one look; the tiles beneath it are the same
-              answer in numbers, which is support rather than the subject. */}
-          <Card
-            title="Every night in the window"
-            subtitle="One scale for all of it: an hour of sleep is ten units, so a gridline is an hour, ten bpm, ten ms and ten points of oxygen at once. Gaps are nights with no recording."
-          >
-            <MasterLegend overlays={OVERLAYS.map((row) => ({ ...row, points: points(row.metric) }))} />
-            <SleepTrendChart
-              start={iso(start)}
-              end={iso(end)}
-              targetMinutes={target}
-              nights={sessions
-                .map((session) => ({
-                  date: session.local_date,
-                  minutes: session.duration_minutes,
-                  efficiency: session.efficiency ?? null,
-                  hasHypnogram: session.has_hypnogram,
-                }))
-                .reverse()}
-              overlays={OVERLAYS.map((row) => ({ ...row, points: points(row.metric) }))}
-            />
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Everything shares one date axis, so a short night and a raised resting heart rate
-              above it are the same evening. The four signals are in different units and are
-              plotted together because each of them lives inside 0–100 in its own — which means
-              their crossings are real, but also that blood oxygen moving 93 to 97 is four percent
-              of this axis and reads nearly flat. Open a night for that signal at its own scale.
-            </p>
-          </Card>
-
           {/* The three numbers that answer "how am I doing", stated as
               comparisons rather than as bare values - an average duration on
               its own is a number nobody can act on. */}
@@ -169,6 +138,37 @@ export default async function SleepPage({
               tone={spread !== null && spread > 60 ? "text-amber-600 dark:text-amber-400" : ""}
             />
           </div>
+
+          {/* The chart leads. It is the only thing on the page that answers
+              "how is my sleep" in one look; the tiles above it are the same
+              answer in numbers, which is support rather than the subject. */}
+          <Card
+            title="Every night in the window"
+            subtitle="One scale for all of it: an hour of sleep is ten units, so a gridline is an hour, ten bpm, ten ms and ten points of oxygen at once. Gaps are nights with no recording."
+          >
+            <MasterLegend overlays={OVERLAYS.map((row) => ({ ...row, points: points(row.metric) }))} />
+            <SleepTrendChart
+              start={iso(start)}
+              end={iso(end)}
+              targetMinutes={target}
+              nights={sessions
+                .map((session) => ({
+                  date: session.local_date,
+                  minutes: session.duration_minutes,
+                  efficiency: session.efficiency ?? null,
+                  hasHypnogram: session.has_hypnogram,
+                }))
+                .reverse()}
+              overlays={OVERLAYS.map((row) => ({ ...row, points: points(row.metric) }))}
+            />
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Everything shares one date axis, so a short night and a raised resting heart rate
+              above it are the same evening. The four signals are in different units and are
+              plotted together because each of them lives inside 0–100 in its own — which means
+              their crossings are real, but also that blood oxygen moving 93 to 97 is four percent
+              of this axis and reads nearly flat. Open a night for that signal at its own scale.
+            </p>
+          </Card>
 
           {changed.comparable && (
             <Card
