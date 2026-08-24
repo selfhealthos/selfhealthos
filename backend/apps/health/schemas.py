@@ -378,15 +378,97 @@ class HealthFitnessTestOut(Schema):
     notes: str = ""
 
 
+class HealthWeightEntryOut(Schema):
+    id: UUID
+    local_date: date
+    weight_kg: float
+    notes: str = ""
+
+
+class HealthBodyColumnOut(Schema):
+    """One column of the Body table, and whether it carries a colour."""
+
+    key: str
+    label: str
+    unit: str
+    places: int
+    #: False means the column has no threshold behind it and is drawn plain.
+    #: An uncoloured number says "no opinion"; a guessed colour does not.
+    scored: bool
+    evidence: str = ""
+
+
+class HealthBodyCellOut(Schema):
+    key: str
+    value: float | None = None
+    score: float | None = None
+    #: 1 (worst) to 5 (best), or null when the column is unscored or empty.
+    band: int | None = None
+
+
+class HealthBodyRowOut(Schema):
+    date: date
+    cells: list[HealthBodyCellOut]
+
+
 class HealthBodyOut(Schema):
     start: date
     end: date
     days: int
-    #: From the profile. Null means the waist-to-height ratio is not derivable,
-    #: not that it is zero.
+    #: From the profile. Null means BMI and the waist-to-height ratio are not
+    #: derivable, not that they are zero.
     height_cm: float | None = None
+    #: The user's own goal, not a clinical threshold. Null means the weight
+    #: column is drawn without a colour.
+    target_weight_kg: float | None = None
+    weights: list[HealthWeightEntryOut]
     measurements: list[HealthBodyMeasurementOut]
+    columns: list[HealthBodyColumnOut]
+    rows: list[HealthBodyRowOut]
+
+
+class HealthFitnessOut(Schema):
+    start: date
+    end: date
+    days: int
     tests: list[HealthFitnessTestOut]
+
+
+class HealthBodyProfileOut(Schema):
+    height_cm: float | None = None
+    target_weight_kg: float | None = None
+
+
+class HealthBodyProfileIn(Schema):
+    """A PATCH of the two Body numbers.
+
+    Both optional, and `None` is a meaningful value: sending `height_cm: null`
+    unsets the height. `api.set_body_profile` passes the keys actually present
+    in the request through to the service, so an absent key means "leave it"
+    while a null one means "clear it".
+    """
+
+    height_cm: float | None = None
+    target_weight_kg: float | None = None
+
+
+class HealthWeightIn(Schema):
+    weight_kg: float
+    #: Absent means today in the user's own timezone. `local_date` is stored,
+    #: not computed, so this decides the day forever.
+    on: date | None = None
+    notes: str = ""
+
+
+class HealthMeasurementIn(Schema):
+    """Tape-measure numbers. Every field optional, but not all of them."""
+
+    waist_cm: float | None = None
+    hips_cm: float | None = None
+    neck_cm: float | None = None
+    body_fat_pct: float | None = None
+    on: date | None = None
+    notes: str = ""
 
 
 # -- labs -------------------------------------------------------------------

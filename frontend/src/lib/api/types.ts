@@ -40,6 +40,15 @@ export type HealthDietEntry = components["schemas"]["HealthDietEntryOut"];
 export type HealthGut = components["schemas"]["HealthGutOut"];
 export type HealthBristolDaily = components["schemas"]["HealthBristolDailyOut"];
 export type HealthBody = components["schemas"]["HealthBodyOut"];
+export type HealthBodyColumn = components["schemas"]["HealthBodyColumnOut"];
+export type HealthBodyRow = components["schemas"]["HealthBodyRowOut"];
+export type HealthBodyCell = components["schemas"]["HealthBodyCellOut"];
+export type HealthBodyMeasurement =
+  components["schemas"]["HealthBodyMeasurementOut"];
+export type HealthWeightEntry = components["schemas"]["HealthWeightEntryOut"];
+export type HealthBodyProfile = components["schemas"]["HealthBodyProfileOut"];
+export type HealthFitness = components["schemas"]["HealthFitnessOut"];
+export type HealthFitnessTest = components["schemas"]["HealthFitnessTestOut"];
 export type HealthLabMarker = components["schemas"]["HealthLabMarkerOut"];
 export type HealthNote = components["schemas"]["HealthNoteOut"];
 export type HealthDoc = components["schemas"]["HealthDocOut"];

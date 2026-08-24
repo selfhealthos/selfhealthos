@@ -4,6 +4,13 @@ name: Publish images
 # main can never produce a tagged image. Runs on every push to main (tagged
 # `latest` + the commit sha) and on version tags (also tagged with the
 # version, for a pinnable release).
+#
+# Publishing is where this workflow stops. There is deliberately no deploy
+# job: operators pull the new images and restart their own stack on their own
+# schedule, which is what the README and CLAUDE.md have always described. An
+# earlier version of this file did carry one, SSHing into a specific Oracle
+# VM - it only ever failed, because the host secret was never set, and a
+# permanently red workflow is worse than no workflow at all.
 on:
   push:
     branches: [main]
@@ -47,8 +54,10 @@ jobs:
         with:
           context: ./backend
           target: runner
-          # linux/arm64 so this pulls and runs natively on an Ampere A1 (aarch64)
-          # Oracle free-tier instance, not just amd64.
+          # linux/arm64 as well as amd64: a self-hosted stack lands on a
+          # Raspberry Pi, an Ampere instance or an Apple Silicon Mac at least
+          # as often as on an x86 box, and emulating amd64 on those is slow
+          # enough that people notice.
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -86,32 +95,13 @@ jobs:
         with:
           context: ./frontend
           target: runner
-          # linux/arm64 so this pulls and runs natively on an Ampere A1 (aarch64)
-          # Oracle free-tier instance, not just amd64.
+          # linux/arm64 as well as amd64: a self-hosted stack lands on a
+          # Raspberry Pi, an Ampere instance or an Apple Silicon Mac at least
+          # as often as on an x86 box, and emulating amd64 on those is slow
+          # enough that people notice.
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    name: Deploy to Oracle VM
-    needs: [publish-backend, publish-frontend]
-    # Tag pushes (v*.*.*) publish a pinned image but don't auto-deploy - a
-    # release you cut isn't necessarily the moment you want to roll it onto
-    # the running instance. Only a push landing on main triggers a deploy.
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.ORACLE_HOST }}
-          username: ${{ secrets.ORACLE_SSH_USER }}
-          key: ${{ secrets.ORACLE_SSH_KEY }}
-          script: |
-            set -e
-            cd ~/selfhealthos
-            docker compose pull
-            docker compose up -d
-            docker compose exec -T django python manage.py migrate
