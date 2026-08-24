@@ -33,7 +33,10 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
   },
   {
     title: "Fitness",
-    items: [{ href: "/workout", label: "Workout", icon: "◈" }],
+    items: [
+      { href: "/workout", label: "Workout", icon: "◈" },
+      { href: "/friends", label: "Friends", icon: "◉" },
+    ],
   },
   {
     title: "Logged",
