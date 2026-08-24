@@ -36,6 +36,19 @@ class User(AbstractUser):
     timezone = models.CharField(max_length=64, default="UTC")
     locale = models.CharField(max_length=16, default="en")
 
+    # --- Social ----------------------------------------------------------
+    #: Short, shareable, rotatable. Read aloud in a gym or pasted into a chat
+    #: to add someone without the instance exposing a browsable user list -
+    #: the alternative, prefix-searching usernames, is a scrape target. Null
+    #: until first needed; `apps.social.services.ensure_friend_code` mints it.
+    friend_code = models.CharField(max_length=16, unique=True, null=True, blank=True, default=None)
+    #: Off means friend requests can only reach this account via `friend_code`.
+    discoverable_by_username = models.BooleanField(default=True)
+    #: Whether an accepted friend may log a shared workout to this account.
+    #: This is the permission; a friend being ticked in someone's workout
+    #: picker is not (see `apps.social.models.FriendPref.workout_partner`).
+    allow_partner_logging = models.BooleanField(default=True)
+
     class Meta:
         verbose_name = _("user")
         verbose_name_plural = _("users")

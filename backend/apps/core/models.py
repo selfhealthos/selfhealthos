@@ -34,13 +34,20 @@ class Visibility(models.TextChoices):
 
 class OwnedQuerySet(models.QuerySet):
     def visible_to(self, user) -> "OwnedQuerySet":
-        """Rows `user` may read.
+        """Rows `user` may read *from the shared library*.
 
-        Login is the trust boundary, so in practice everything is SHARED and
-        every authenticated user sees everything. The filter still runs on
-        every query rather than being assumed away, so the day a record needs
-        to be private it is a flag on one row instead of a migration and an
-        audit of every call site.
+        SHARED here means "shared with everyone signed in to this instance" -
+        it is the household-library model, and it predates the friend graph in
+        `apps.social`. It is deliberately not friend-aware: health rows are
+        read through `DeviceEntryQuerySet.for_user()`, which filters on
+        `created_by`, and the friend graph grants exactly one cross-user
+        capability - writing a shared workout - and no reads at all.
+
+        The deferred timeline brings its own three-value audience
+        (private/friends/public) stamped on each shared item rather than
+        retrofitting one here; see `docs/roadmap-social.md`. Read this filter
+        as "the library everyone on this instance can see", not as the
+        instance's whole privacy model.
         """
         if user is None or not getattr(user, "is_authenticated", False):
             return self.none()
