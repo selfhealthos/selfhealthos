@@ -121,10 +121,33 @@ class DietEntry(OccurredEntry, Taggable):
 
 
 class ExerciseEntry(OccurredEntry):
-    """A workout session, named after the video followed."""
+    """A workout session, named after the video followed.
+
+    Usually one row per person per clip. When two friends train together, one
+    press of Complete writes one row *each* - same `coop_group_id`, same
+    `logged_by`, but `created_by` set to the person the row belongs to, since
+    that is what every read filters on.
+    """
 
     video_name = models.CharField(max_length=255)
     duration_s = models.PositiveIntegerField(default=0)
+
+    #: Who pressed Complete. Equal to `created_by` for a solo session; a
+    #: friend's id on a row somebody logged for you. Never a permission -
+    #: reads still go by `created_by`, and this exists so the entry can say
+    #: "logged by alex" and so the owner knows what to delete if it was wrong.
+    logged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="exercise_entries_logged",
+    )
+    #: Ties together the rows one press produced. Not `client_id`: that column
+    #: is globally unique and devicesync rejects one presented by a user who
+    #: does not own its row, so a single id shared across a fan-out would break
+    #: phone sync for everyone in the group.
+    coop_group_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta(OccurredEntry.Meta):
         verbose_name_plural = "exercise entries"
