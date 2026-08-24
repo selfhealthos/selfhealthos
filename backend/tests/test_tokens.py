@@ -68,4 +68,12 @@ def test_enrol_trades_username_and_password_for_a_token(user):
         content_type="application/json",
     )
     assert resp.status_code == 201
-    assert set(resp.json()["scopes"]) == {"health:read", "health:write"}
+    # Spelled out rather than compared against PRESETS: the point is to notice
+    # when a preset's grant widens, which a comparison against the definition
+    # would silently agree with.
+    assert set(resp.json()["scopes"]) == {
+        "health:read",
+        "health:write",
+        "social:read",
+        "social:write",
+    }

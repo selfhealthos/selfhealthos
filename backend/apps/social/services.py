@@ -72,6 +72,88 @@ def friends_of(user):
     return User.objects.filter(pk__in=ids).order_by("username")
 
 
+def friend_rows(user) -> list[dict]:
+    """The friends list as the API returns it: friend, edge, and my prefs.
+
+    Built in one pass over three queries rather than per-friend lookups - a
+    list of 50 friends should not be 50 round trips.
+    """
+    edges = list(Friendship.objects.involving(user).accepted())
+    if not edges:
+        return []
+
+    by_other = {(e.user_high_id if e.user_low_id == user.pk else e.user_low_id): e for e in edges}
+    others = User.objects.filter(pk__in=by_other).order_by("username")
+    pinned = set(
+        FriendPref.objects.filter(
+            owner=user, friend__in=by_other, workout_partner=True
+        ).values_list("friend_id", flat=True)
+    )
+    return [
+        {
+            "user": user_card(other),
+            "friendship_id": by_other[other.pk].pk,
+            "workout_partner": other.pk in pinned,
+            "accepts_partner_logging": other.allow_partner_logging,
+            "since": by_other[other.pk].responded_at,
+        }
+        for other in others
+    ]
+
+
+def request_rows(user) -> dict:
+    """Pending requests, split by who asked.
+
+    The split comes off `requested_by`, not off the pair columns: those are
+    ordered by UUID and carry no direction at all.
+    """
+    edges = list(Friendship.objects.involving(user).pending().select_related("requested_by"))
+    other_ids = {e.user_high_id if e.user_low_id == user.pk else e.user_low_id for e in edges}
+    people = {u.pk: u for u in User.objects.filter(pk__in=other_ids)}
+
+    incoming, outgoing = [], []
+    for edge in edges:
+        other_id = edge.user_high_id if edge.user_low_id == user.pk else edge.user_low_id
+        row = {
+            "friendship_id": edge.pk,
+            "user": user_card(people[other_id]),
+            "created_at": edge.created_at,
+        }
+        (outgoing if edge.requested_by_id == user.pk else incoming).append(row)
+    return {"incoming": incoming, "outgoing": outgoing}
+
+
+def user_card(user) -> dict:
+    """`SocialUserOut`'s payload. One shape, one place it is built."""
+    return {
+        "id": user.pk,
+        "username": user.username,
+        "avatar_url": user.avatar.url if user.avatar else None,
+    }
+
+
+def social_settings(user) -> dict:
+    """The caller's own social settings. Mints a friend code on first read."""
+    return {
+        "friend_code": ensure_friend_code(user),
+        "discoverable_by_username": user.discoverable_by_username,
+        "allow_partner_logging": user.allow_partner_logging,
+    }
+
+
+def update_social_settings(user, *, discoverable_by_username=None, allow_partner_logging=None):
+    fields = []
+    if discoverable_by_username is not None:
+        user.discoverable_by_username = discoverable_by_username
+        fields.append("discoverable_by_username")
+    if allow_partner_logging is not None:
+        user.allow_partner_logging = allow_partner_logging
+        fields.append("allow_partner_logging")
+    if fields:
+        user.save(update_fields=fields)
+    return social_settings(user)
+
+
 # --------------------------------------------------------------------------
 # Friend codes
 # --------------------------------------------------------------------------

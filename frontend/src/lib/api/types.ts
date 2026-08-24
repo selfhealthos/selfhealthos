@@ -70,3 +70,13 @@ export type FitnessPlaylistDetail = components["schemas"]["FitnessPlaylistDetail
 export type FitnessExercise = components["schemas"]["FitnessExerciseOut"];
 export type FitnessStats = components["schemas"]["FitnessStatsOut"];
 export type FitnessSession = components["schemas"]["FitnessSessionOut"];
+
+// Social - the friend graph. `SocialUser` is the one shape used anywhere a
+// person who isn't the signed-in user appears: friends, both request lists,
+// the workout picker, and later the timeline. Don't add a second one.
+export type SocialUser = components["schemas"]["SocialUserOut"];
+export type SocialFriend = components["schemas"]["SocialFriendOut"];
+export type SocialRequests = components["schemas"]["SocialRequestsOut"];
+export type SocialRequest = components["schemas"]["SocialRequestOut"];
+export type SocialRequestAck = components["schemas"]["SocialRequestAckOut"];
+export type SocialSettings = components["schemas"]["SocialMeOut"];

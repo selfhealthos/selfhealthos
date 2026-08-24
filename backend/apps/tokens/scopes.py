@@ -26,6 +26,12 @@ class Scope:
 SCOPES: tuple[Scope, ...] = (
     Scope("health:read", "Health — read", "Metrics, days, trends, sleep, food, habits."),
     Scope("health:write", "Health — write", "Add or correct health entries."),
+    Scope("social:read", "Friends — read", "Your friends list and pending friend requests."),
+    Scope(
+        "social:write",
+        "Friends — write",
+        "Send, accept and decline friend requests, and log workouts you did together.",
+    ),
 )
 
 BY_KEY: dict[str, Scope] = {s.key: s for s in SCOPES}
@@ -35,10 +41,16 @@ ALL: frozenset[str] = frozenset(BY_KEY)
 PRESETS: dict[str, tuple[str, ...]] = {
     # Claude Code / MCP. Read everything, change nothing, unless the holder
     # explicitly asks for write too.
+    #
+    # No social:* in either Claude preset, and no MCP tool reads the friend
+    # graph: MCP is deliberately self-only. An agent that can enumerate who
+    # you know - or write a workout into their log - is a much larger grant
+    # than "answer questions about my own health data", and nothing about the
+    # MCP use case needs it.
     "claude": ("health:read",),
     "claude-write": ("health:read", "health:write"),
-    "read-only": ("health:read",),
-    "full-access": ("health:read", "health:write"),
+    "read-only": ("health:read", "social:read"),
+    "full-access": ("health:read", "health:write", "social:read", "social:write"),
 }
 
 
