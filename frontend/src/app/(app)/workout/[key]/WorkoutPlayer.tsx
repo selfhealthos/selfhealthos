@@ -106,9 +106,20 @@ export function WorkoutPlayer({
   // Read after mount, not in a useState initialiser: sessionStorage doesn't
   // exist during the server render, and reading it there is a hydration
   // mismatch.
+  //
+  // Filtered against who is actually selectable right now, because the stored
+  // ids can outlive the state they were saved in: a friend ticked earlier who
+  // has since turned off shared workouts (or been unticked in Settings, or
+  // removed) would otherwise stay selected behind a disabled chip nobody can
+  // clear, and every Complete would fail with the same 409 forever.
   useEffect(() => {
-    setWithPartners(readStoredPartners(playlist.key));
-  }, [playlist.key]);
+    const selectable = new Set(
+      partners.filter((p) => p.accepts_partner_logging).map((p) => p.id),
+    );
+    setWithPartners(
+      readStoredPartners(playlist.key).filter((id) => selectable.has(id)),
+    );
+  }, [playlist.key, partners]);
 
   function togglePartner(id: string) {
     setWithPartners((current) => {

@@ -27,7 +27,9 @@ docker compose exec django ruff format .
 After changing any backend API surface (new endpoint, changed schema), regenerate the frontend's types before touching frontend code:
 
 ```bash
-curl http://localhost:8000/api/openapi.json -o frontend/openapi.json
+# The API is mounted at /api/v1/, so the spec is there too - /api/openapi.json 404s.
+# Django isn't published to the host by default; go through the frontend's port.
+curl http://localhost/api/v1/openapi.json -o frontend/openapi.json
 cd frontend && npm run generate:api && npm run typecheck
 ```
 
