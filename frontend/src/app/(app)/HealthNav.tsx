@@ -3,12 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useNavCollapsed } from "./navCollapse";
+
 /**
  * The app's sidebar nav over the Health dataset - a dozen views over one
  * dataset, not one page, so a sidebar rather than a single centred column.
  *
  * Sections rather than a flat list: fifteen flat items is already at the
  * limit of what can be scanned.
+ *
+ * Collapsed (the `lg:nav-collapsed:` classes below), it becomes an icon-only
+ * rail: labels and section headings drop out, the icons stay put, and each
+ * link picks up a tooltip since the icon alone doesn't name the page.
  */
 
 type Item = { href: string; label: string; icon: string };
@@ -33,7 +39,10 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
   },
   {
     title: "Fitness",
-    items: [{ href: "/workout", label: "Workout", icon: "◈" }],
+    items: [
+      { href: "/workout", label: "Workout", icon: "◈" },
+      { href: "/friends", label: "Friends", icon: "◉" },
+    ],
   },
   {
     title: "Logged",
@@ -54,12 +63,13 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
 
 export function HealthNav() {
   const pathname = usePathname();
+  const collapsed = useNavCollapsed();
 
   return (
     <nav className="space-y-4">
       {SECTIONS.map((section) => (
         <div key={section.title}>
-          <p className="px-3 pb-1 text-[10px] font-semibold tracking-wider text-ink-muted uppercase">
+          <p className="px-3 pb-1 text-[10px] font-semibold tracking-wider text-ink-muted uppercase lg:nav-collapsed:hidden">
             {section.title}
           </p>
           <div className="space-y-0.5">
@@ -76,19 +86,20 @@ export function HealthNav() {
                   key={item.href}
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`flex items-center gap-2.5 rounded px-3 py-1.5 text-sm transition-colors ${
+                  title={collapsed ? item.label : undefined}
+                  className={`flex items-center gap-2.5 rounded px-3 py-1.5 text-sm transition-colors lg:nav-collapsed:justify-center lg:nav-collapsed:px-0 ${
                     active
                       ? "bg-surface-2 font-medium text-ink"
                       : "text-ink-dim hover:bg-surface-2 hover:text-ink"
                   }`}
                 >
                   <span
-                    className={`w-4 text-center text-xs ${active ? "text-brand-blue" : "text-ink-muted"}`}
+                    className={`w-4 shrink-0 text-center text-xs ${active ? "text-brand-blue" : "text-ink-muted"}`}
                     aria-hidden
                   >
                     {item.icon}
                   </span>
-                  {item.label}
+                  <span className="lg:nav-collapsed:hidden">{item.label}</span>
                 </Link>
               );
             })}

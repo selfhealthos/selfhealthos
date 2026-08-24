@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import date, time, timedelta
 from statistics import fmean
 
+from django.db import transaction
 from django.db.models import Count, Exists, Max, Min, OuterRef
 
 from apps.core.exceptions import DomainError, NotFound
@@ -1834,13 +1835,32 @@ def log_entry(
     return entry, summary
 
 
-def log_exercise(user, *, video_name: str, duration_s: int, at=None):
-    """Record one completed workout session.
+#: How close two same-named sessions must be before the second is treated as
+#: the same workout logged twice. Only consulted inside a shared session - see
+#: `log_shared_exercise`.
+COOP_DEDUPE_WINDOW_S = 90
+
+
+def log_exercise(
+    user, *, video_name: str, duration_s: int, at=None, logged_by=None, coop_group_id=None
+):
+    """Record one completed workout session, for one person.
 
     Called by `apps.fitness` when a clip is finished. It lives here, not there,
     because `ExerciseEntry` lives here: the importer, the daily rollups and the
     MCP tools all read it, and a second app reaching into this one's ORM is how
     those four callers start to disagree about what an exercise session is.
+
+    `user` is always the person the row *belongs to*; `logged_by` is whoever
+    pressed the button, which is a different person only for a shared session.
+    Getting those two the wrong way round puts the entry on the wrong
+    dashboard, since every read filters on `created_by`.
+
+    Note `local_date` comes from `user`'s timezone, not the caller's. That is
+    the whole reason `log_shared_exercise` calls this once per participant
+    rather than writing the rows in bulk: two friends training together in
+    Melbourne and London genuinely belong to different calendar days, and
+    `local_date` is stored, not computed, so a wrong value is permanent.
     """
     from . import rollups
     from .models import ExerciseEntry
@@ -1858,10 +1878,16 @@ def log_exercise(user, *, video_name: str, duration_s: int, at=None):
         local_date=local_date,
         video_name=name,
         duration_s=seconds,
+        logged_by=logged_by or user,
+        coop_group_id=coop_group_id,
+        # Deliberately no client_id. It is globally unique and devicesync
+        # rejects one presented by a user who does not own its row, so a
+        # fan-out that reused a single id would break phone sync for everyone
+        # in the group.
     )
     record_event(
         verb="health.exercise.logged",
-        actor=user,
+        actor=logged_by or user,
         target=entry,
         summary=name,
         duration_s=seconds,
@@ -1870,6 +1896,78 @@ def log_exercise(user, *, video_name: str, duration_s: int, at=None):
     # nightly job reads as the workout not having counted.
     rollups.rebuild(user, local_date, local_date)
     return entry
+
+
+def log_shared_exercise(
+    actor, *, video_name: str, duration_s: int, partners=(), at=None, coop_group_id=None
+):
+    """One press of Complete, fanned out to everyone in the room.
+
+    `partners` must already be authorised - `apps.social.services.
+    assert_can_log_for` is what decides that, and this function deliberately
+    does not re-decide it.
+
+    Writes one row per participant via `log_exercise`, so each row's
+    `local_date` and rollup rebuild happen in that person's own timezone.
+    Atomic: a partner that fails must not leave the actor with a session the
+    others never got.
+
+    The dedupe is the load-bearing part. Two people in one room, each with the
+    player open, each ticking the other and both pressing Complete is not an
+    edge case - it is the feature working as intended - and without this it
+    silently doubles everyone's minutes. So inside a shared session a
+    participant who already has a live entry for the same exercise within
+    `COOP_DEDUPE_WINDOW_S`, under a *different* group, is skipped.
+
+    The cost is that genuinely repeating the same exercise inside 90 seconds of
+    a shared session records once. That is the better failure: an
+    under-recorded repeat is visible and re-loggable, a silently doubled chart
+    is neither.
+    """
+    from uuid6 import uuid7
+
+    subjects = [actor, *partners]
+    if not partners:
+        # Solo path unchanged: no group, no dedupe, no behaviour to regress.
+        return [log_exercise(actor, video_name=video_name, duration_s=duration_s, at=at)]
+
+    group_id = coop_group_id or uuid7()
+    occurred_at = at or _utcnow()
+
+    entries = []
+    with transaction.atomic():
+        for subject in subjects:
+            if _has_recent_exercise(subject, video_name, occurred_at, exclude_group=group_id):
+                continue
+            entries.append(
+                log_exercise(
+                    subject,
+                    video_name=video_name,
+                    duration_s=duration_s,
+                    at=occurred_at,
+                    logged_by=actor,
+                    coop_group_id=group_id,
+                )
+            )
+    return entries
+
+
+def _has_recent_exercise(user, video_name, occurred_at, *, exclude_group) -> bool:
+    from .models import ExerciseEntry
+
+    name = (video_name or "").strip()[:255] or "Unknown"
+    window = timedelta(seconds=COOP_DEDUPE_WINDOW_S)
+    return (
+        ExerciseEntry.objects.filter(
+            created_by=user,
+            deleted_at__isnull=True,
+            video_name=name,
+            occurred_at__gte=occurred_at - window,
+            occurred_at__lte=occurred_at + window,
+        )
+        .exclude(coop_group_id=exclude_group)
+        .exists()
+    )
 
 
 def _utcnow():

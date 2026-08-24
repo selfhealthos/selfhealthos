@@ -8,6 +8,12 @@
    always set explicitly to "dark" or "light" (default "dark"). */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* The sidebar's collapsed state lives on <html data-nav> so the no-FOUC
+   script in the root layout can set it before first paint - see
+   `(app)/navCollapse.ts`. Pair it with `lg:` at the call site; the icon rail
+   is a desktop-only affordance. */
+@custom-variant nav-collapsed (&:where([data-nav="collapsed"] *));
+
 /* --------------------------------------------------------------------------
    Theme: dark by default, light on request
    --------------------------------------------------------------------------

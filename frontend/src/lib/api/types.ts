@@ -31,7 +31,8 @@ export type HealthSyncQueued = components["schemas"]["HealthSyncQueued"];
 export type HealthHabitHistory = components["schemas"]["HealthHabitHistoryOut"];
 export type HealthHabitRow = components["schemas"]["HealthHabitRowOut"];
 export type HealthHeatmap = components["schemas"]["HealthHeatmapOut"];
-export type HealthHeatmapColumn = components["schemas"]["HealthHeatmapColumnOut"];
+export type HealthHeatmapColumn =
+  components["schemas"]["HealthHeatmapColumnOut"];
 export type HealthHeatmapRow = components["schemas"]["HealthHeatmapRowOut"];
 export type HealthHeatmapCell = components["schemas"]["HealthHeatmapCellOut"];
 export type HealthDietLog = components["schemas"]["HealthDietLogOut"];
@@ -47,7 +48,8 @@ export type HealthEntry = components["schemas"]["HealthEntryOut"];
 export type HealthOffice = components["schemas"]["HealthOfficeOut"];
 export type HealthOfficeDay = components["schemas"]["HealthOfficeDayOut"];
 export type HealthOfficeReport = components["schemas"]["HealthOfficeReportOut"];
-export type HealthOfficeReportMetric = components["schemas"]["HealthOfficeReportMetricOut"];
+export type HealthOfficeReportMetric =
+  components["schemas"]["HealthOfficeReportMetricOut"];
 export type HealthSleepHistory = components["schemas"]["HealthSleepHistoryOut"];
 export type HealthSleepSession = components["schemas"]["HealthSleepSessionOut"];
 export type HealthNight = components["schemas"]["HealthNightOut"];
@@ -58,15 +60,32 @@ export type HealthHeartHistory = components["schemas"]["HealthHeartHistoryOut"];
 export type HealthHeartSeries = components["schemas"]["HealthHeartSeriesOut"];
 export type HealthHeartZone = components["schemas"]["HealthHeartZoneOut"];
 export type HealthActivity = components["schemas"]["HealthActivityOut"];
-export type HealthActivityHistory = components["schemas"]["HealthActivityHistoryOut"];
+export type HealthActivityHistory =
+  components["schemas"]["HealthActivityHistoryOut"];
 export type HealthActivityDay = components["schemas"]["HealthActivityDayOut"];
-export type HealthActivitySeries = components["schemas"]["HealthActivitySeriesOut"];
+export type HealthActivitySeries =
+  components["schemas"]["HealthActivitySeriesOut"];
 
 // Fitness - the workout player. Prefixed with the app label like everything
 // else, not "Health": these read a fixed playlist config and log through
 // `apps.health`'s ExerciseEntry, but they aren't part of the Health domain.
 export type FitnessPlaylist = components["schemas"]["FitnessPlaylistOut"];
-export type FitnessPlaylistDetail = components["schemas"]["FitnessPlaylistDetailOut"];
+export type FitnessPlaylistDetail =
+  components["schemas"]["FitnessPlaylistDetailOut"];
 export type FitnessExercise = components["schemas"]["FitnessExerciseOut"];
 export type FitnessStats = components["schemas"]["FitnessStatsOut"];
 export type FitnessSession = components["schemas"]["FitnessSessionOut"];
+// The picker's friend list. Same fields as SocialUser plus the friend's own
+// opt-out; a separate class on the backend only because the OpenAPI component
+// map is keyed by class name and each app prefixes its own.
+export type FitnessPartner = components["schemas"]["FitnessPartnerOut"];
+
+// Social - the friend graph. `SocialUser` is the one shape used anywhere a
+// person who isn't the signed-in user appears: friends, both request lists,
+// the workout picker, and later the timeline. Don't add a second one.
+export type SocialUser = components["schemas"]["SocialUserOut"];
+export type SocialFriend = components["schemas"]["SocialFriendOut"];
+export type SocialRequests = components["schemas"]["SocialRequestsOut"];
+export type SocialRequest = components["schemas"]["SocialRequestOut"];
+export type SocialRequestAck = components["schemas"]["SocialRequestAckOut"];
+export type SocialSettings = components["schemas"]["SocialMeOut"];

@@ -8,17 +8,23 @@ export const metadata: Metadata = {
 };
 
 // Dark is the default theme (see globals.css) - this runs before first paint
-// so a stored preference never flashes the wrong theme first. Always sets the
+// so a stored preference never flashes the wrong theme first. Same for the
+// sidebar's collapsed state (data-nav), which would otherwise paint the
+// full-width sidebar and snap it to the icon rail on hydration. Always sets the
 // attribute explicitly (never leaves it absent): Tailwind's `dark:` variant
 // is redefined in globals.css to key off data-theme="dark" specifically, and
 // ThemeToggle does the same on every change.
 const NO_FLASH_THEME_SCRIPT = `
 (function () {
+  var el = document.documentElement;
   try {
-    var stored = localStorage.getItem("selfhealthos-theme");
-    document.documentElement.setAttribute("data-theme", stored === "light" ? "light" : "dark");
+    var theme = localStorage.getItem("selfhealthos-theme");
+    el.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+    var nav = localStorage.getItem("selfhealthos-nav");
+    el.setAttribute("data-nav", nav === "collapsed" ? "collapsed" : "expanded");
   } catch (e) {
-    document.documentElement.setAttribute("data-theme", "dark");
+    el.setAttribute("data-theme", "dark");
+    el.setAttribute("data-nav", "expanded");
   }
 })();
 `;
@@ -35,7 +41,9 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }} />
       </head>
-      <body className="min-h-screen bg-bg text-ink antialiased">{children}</body>
+      <body className="min-h-screen bg-bg text-ink antialiased">
+        {children}
+      </body>
     </html>
   );
 }

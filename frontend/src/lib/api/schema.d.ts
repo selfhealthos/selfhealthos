@@ -989,6 +989,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fitness/partners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Friends you picked to show in the workout player */
+        get: operations["listFitnessPartners"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fitness/complete": {
         parameters: {
             query?: never;
@@ -998,8 +1015,189 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record one completed exercise clip */
+        /** Record one completed exercise clip, optionally for friends too */
         post: operations["completeFitnessExercise"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own friend code and discovery settings */
+        get: operations["getSocialSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update your discovery and shared-workout settings */
+        patch: operations["updateSocialSettings"];
+        trace?: never;
+    };
+    "/api/v1/social/me/friend-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a new friend code, invalidating the old one */
+        post: operations["rotateFriendCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your accepted friends */
+        get: operations["listFriends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friends/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a friend */
+        delete: operations["unfriend"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friends/{user_id}/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Your own settings about one friend */
+        patch: operations["updateFriendPrefs"];
+        trace?: never;
+    };
+    "/api/v1/social/friends/{user_id}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Block a user */
+        post: operations["blockUser"];
+        /** Unblock a user */
+        delete: operations["unblockUser"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friend-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pending requests, incoming and outgoing */
+        get: operations["listFriendRequests"];
+        put?: never;
+        /**
+         * Ask to be someone's friend, by username or friend code
+         * @description 202 whether or not the account exists.
+         *
+         *     A 404 here would let anyone confirm who holds an account on this instance
+         *     by watching which usernames come back differently, so the miss path is
+         *     indistinguishable from "they have username discovery off" and from "they
+         *     blocked you". `sent: false` is all the caller learns.
+         */
+        post: operations["sendFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friend-requests/{friendship_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept an incoming request */
+        post: operations["acceptFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friend-requests/{friendship_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline an incoming request */
+        post: operations["declineFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/social/friend-requests/{friendship_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a request you sent */
+        post: operations["cancelFriendRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3284,6 +3482,28 @@ export interface components {
              * Format: date-time
              */
             occurred_at: string;
+            /** Logged By */
+            logged_by?: string | null;
+        };
+        /**
+         * FitnessPartnerOut
+         * @description A friend the player may tick. `SocialUserOut`'s fields, by design.
+         *
+         *     Kept as its own class only because the OpenAPI component map is keyed by
+         *     class name and this app's schemas must be prefixed `Fitness*`.
+         */
+        FitnessPartnerOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Accepts Partner Logging */
+            accepts_partner_logging: boolean;
         };
         /** FitnessCompleteIn */
         FitnessCompleteIn: {
@@ -3291,6 +3511,122 @@ export interface components {
             video_name: string;
             /** Duration S */
             duration_s: number;
+            /**
+             * Partner Ids
+             * @default []
+             */
+            partner_ids: string[];
+            /** Coop Group Id */
+            coop_group_id?: string | null;
+        };
+        /**
+         * SocialMeOut
+         * @description The caller's own social settings, for the Settings page.
+         */
+        SocialMeOut: {
+            /** Friend Code */
+            friend_code: string;
+            /** Discoverable By Username */
+            discoverable_by_username: boolean;
+            /** Allow Partner Logging */
+            allow_partner_logging: boolean;
+        };
+        /** SocialMeIn */
+        SocialMeIn: {
+            /** Discoverable By Username */
+            discoverable_by_username?: boolean | null;
+            /** Allow Partner Logging */
+            allow_partner_logging?: boolean | null;
+        };
+        /**
+         * SocialFriendOut
+         * @description An accepted friend, plus the caller's own settings about them.
+         */
+        SocialFriendOut: {
+            user: components["schemas"]["SocialUserOut"];
+            /**
+             * Friendship Id
+             * Format: uuid
+             */
+            friendship_id: string;
+            /** Workout Partner */
+            workout_partner: boolean;
+            /** Accepts Partner Logging */
+            accepts_partner_logging: boolean;
+            /** Since */
+            since?: string | null;
+        };
+        /**
+         * SocialUserOut
+         * @description The one shape any API returns for "a person who is not the caller".
+         *
+         *     Five call sites already: the friends list, both request lists, the workout
+         *     picker, and - once the timeline lands - post and comment authors. Defined
+         *     once so the timeline reuses it instead of inventing a second user card.
+         *
+         *     Deliberately minimal. The friend graph grants no cross-user reads, so
+         *     nothing here is anything the holder did not already publish as their
+         *     identity on the instance.
+         */
+        SocialUserOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Avatar Url */
+            avatar_url?: string | null;
+        };
+        /** SocialPrefsIn */
+        SocialPrefsIn: {
+            /** Workout Partner */
+            workout_partner: boolean;
+        };
+        /** SocialRequestOut */
+        SocialRequestOut: {
+            /**
+             * Friendship Id
+             * Format: uuid
+             */
+            friendship_id: string;
+            user: components["schemas"]["SocialUserOut"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SocialRequestsOut */
+        SocialRequestsOut: {
+            /** Incoming */
+            incoming: components["schemas"]["SocialRequestOut"][];
+            /** Outgoing */
+            outgoing: components["schemas"]["SocialRequestOut"][];
+        };
+        /**
+         * SocialRequestAckOut
+         * @description Deliberately uninformative on the miss path.
+         *
+         *     `sent` is false for "no such user", "they have username discovery off" and
+         *     "they blocked you" alike; `state` never distinguishes them. See
+         *     `services.send_request`.
+         */
+        SocialRequestAckOut: {
+            /** Sent */
+            sent: boolean;
+            /** State */
+            state: string;
+            /** Friendship Id */
+            friendship_id?: string | null;
+        };
+        /** SocialFriendRequestIn */
+        SocialFriendRequestIn: {
+            /** Username */
+            username?: string | null;
+            /** Friend Code */
+            friend_code?: string | null;
         };
     };
     responses: never;
@@ -4502,6 +4838,26 @@ export interface operations {
             };
         };
     };
+    listFitnessPartners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessPartnerOut"][];
+                };
+            };
+        };
+    };
     completeFitnessExercise: {
         parameters: {
             query?: never;
@@ -4523,6 +4879,282 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["FitnessStatsOut"];
                 };
+            };
+        };
+    };
+    getSocialSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialMeOut"];
+                };
+            };
+        };
+    };
+    updateSocialSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialMeIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialMeOut"];
+                };
+            };
+        };
+    };
+    rotateFriendCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialMeOut"];
+                };
+            };
+        };
+    };
+    listFriends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialFriendOut"][];
+                };
+            };
+        };
+    };
+    unfriend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateFriendPrefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPrefsIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialFriendOut"];
+                };
+            };
+        };
+    };
+    blockUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unblockUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listFriendRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialRequestsOut"];
+                };
+            };
+        };
+    };
+    sendFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialFriendRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialRequestAckOut"];
+                };
+            };
+        };
+    };
+    acceptFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                friendship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialRequestAckOut"];
+                };
+            };
+        };
+    };
+    declineFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                friendship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancelFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                friendship_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -7,6 +7,7 @@ import { SignOut } from "@/components/SignOut";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 import { HealthNav } from "./HealthNav";
+import { NavCollapseToggle } from "./NavCollapseToggle";
 
 /**
  * The authenticated app shell: a full-width top nav, a sidebar below it, and
@@ -17,11 +18,17 @@ import { HealthNav } from "./HealthNav";
  * 401, which is the whole of this app's auth gate.
  *
  * The sidebar collapses to a scrolling strip on small screens rather than a
- * hamburger and a backdrop - one fewer piece of state. The top nav's height
- * (h-14) is repeated in the sidebar's sticky offset below so the two don't
- * overlap once the page scrolls.
+ * hamburger and a backdrop - one fewer piece of state. On desktop the button
+ * at the sidebar's top right collapses it the other way, to an icon-only
+ * rail; the width here and the labels inside follow `data-nav` on <html> (see
+ * `navCollapse.ts`). The top nav's height (h-14) is repeated in the sidebar's
+ * sticky offset below so the two don't overlap once the page scrolls.
  */
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const user = await serverGet<User>("/auth/me");
 
   return (
@@ -46,7 +53,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             title="Profile"
             className="flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.6}>
+            <svg
+              viewBox="0 0 24 24"
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.6}
+            >
               <circle cx="12" cy="8" r="3.2" />
               <path
                 d="M5 20c1.2-4 4-6 7-6s5.8 2 7 6"
@@ -62,7 +75,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             title="Settings"
             className="flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.6}>
+            <svg
+              viewBox="0 0 24 24"
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.6}
+            >
               <circle cx="12" cy="12" r="3" />
               <path
                 d="M12 4.5v2M12 17.5v2M19.5 12h-2M6.5 12h-2M17.5 6.5l-1.4 1.4M7.9 16.1l-1.4 1.4M17.5 17.5l-1.4-1.4M7.9 7.9L6.5 6.5"
@@ -76,8 +95,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
 
       <div className="lg:flex lg:flex-1">
-        <aside className="border-b border-border bg-surface lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] lg:w-56 lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-b-0">
-          <div className="p-2">
+        <aside className="border-b border-border bg-surface lg:sticky lg:top-14 lg:flex lg:h-[calc(100vh-3.5rem)] lg:w-56 lg:shrink-0 lg:flex-col lg:border-r lg:border-b-0 lg:transition-[width] lg:nav-collapsed:w-14">
+          <div className="hidden px-2 pt-2 lg:flex lg:justify-end lg:nav-collapsed:justify-center">
+            <NavCollapseToggle />
+          </div>
+          <div className="p-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <HealthNav />
           </div>
         </aside>

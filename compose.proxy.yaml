@@ -1,0 +1,55 @@
+# Opt-in overlay for running behind an existing reverse proxy.
+#
+# The default `docker compose up` is deliberately self-contained: `next`
+# publishes ${HTTP_PORT} and nothing else is reachable. That is the right shape
+# for someone trying this out, and the wrong shape for a host that already runs
+# Caddy, Traefik or nginx-proxy on :80/:443 - there the proxy needs to reach
+# `next` directly, over a network both containers share.
+#
+# This file is not loaded unless you ask for it (it is not `compose.override.
+# yaml`, which Compose reads automatically). Opt in from your .env:
+#
+#   COMPOSE_FILE=compose.yaml:compose.proxy.yaml
+#   COMPOSE_PATH_SEPARATOR=:
+#   INGRESS_NETWORK=<your proxy's shared network>
+#
+# Then point the proxy at container `selfhealthos-next-1`, port 3000. Use the
+# *container* name, not the service name `next`: Compose publishes both as DNS
+# aliases, and `next` is a name plenty of other projects use too - if two of
+# them share your ingress network, the proxy resolves it to whichever answers
+# first. `<project>-<service>-<index>` is unique by construction.
+#
+# You will usually also want HTTP_PORT bound to loopback (or dropped entirely)
+# once the proxy is fronting this, so the app is not reachable unproxied.
+services:
+  next:
+    # Next's standalone server binds `process.env.HOSTNAME`, and Docker sets
+    # that to the container ID when the image does not. Docker's DNS resolves a
+    # container ID to its *primary* network IP, so the server ends up listening
+    # on exactly one interface:
+    #
+    #   tcp  172.23.0.7:3000  LISTEN     <- not 0.0.0.0:3000
+    #
+    # On a single network that is invisible, because the one address is also
+    # the only address anything uses. Joined to a second network it is not: the
+    # proxy connects to the other IP and gets ECONNREFUSED even though DNS
+    # resolved fine, which looks exactly like a firewall problem and is neither.
+    # Next's own Docker documentation prescribes ENV HOSTNAME="0.0.0.0" for
+    # this reason.
+    environment:
+      HOSTNAME: "0.0.0.0"
+    # `default` has to stay listed. Naming any network opts the service out of
+    # the implicit default, and `next` still needs it to reach django and mcp.
+    networks:
+      - default
+      - ingress
+
+networks:
+  ingress:
+    # Created by the proxy's own stack, not by this one - so tearing this
+    # project down never takes the shared network (or anything else on it) with
+    # it. `external` means Compose will not create it: if the name is wrong or
+    # the proxy has never been up, you get a clear error naming the network
+    # rather than a silently-empty new one.
+    external: true
+    name: ${INGRESS_NETWORK:?set INGRESS_NETWORK to your proxy's shared network, e.g. homelab}
