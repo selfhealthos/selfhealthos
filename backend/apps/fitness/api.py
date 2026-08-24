@@ -12,11 +12,11 @@ from __future__ import annotations
 from ninja import Router
 
 from apps.core.exceptions import NotFound
-from apps.health import services as health_services
 
 from . import services
 from .schemas import (
     FitnessCompleteIn,
+    FitnessPartnerOut,
     FitnessPlaylistDetailOut,
     FitnessPlaylistOut,
     FitnessSessionOut,
@@ -69,14 +69,27 @@ def get_recent(request, limit: int = 10):
     return services.recent_sessions(request.auth, limit=limit)
 
 
+@router.get(
+    "/partners",
+    response=list[FitnessPartnerOut],
+    summary="Friends you picked to show in the workout player",
+    operation_id="listFitnessPartners",
+)
+def get_partners(request):
+    return services.available_partners(request.auth)
+
+
 @router.post(
     "/complete",
     response=FitnessStatsOut,
-    summary="Record one completed exercise clip",
+    summary="Record one completed exercise clip, optionally for friends too",
     operation_id="completeFitnessExercise",
 )
 def complete_exercise(request, payload: FitnessCompleteIn):
-    health_services.log_exercise(
-        request.auth, video_name=payload.video_name, duration_s=payload.duration_s
+    return services.complete_exercise(
+        request.auth,
+        video_name=payload.video_name,
+        duration_s=payload.duration_s,
+        partner_ids=payload.partner_ids,
+        coop_group_id=payload.coop_group_id,
     )
-    return services.today_stats(request.auth)

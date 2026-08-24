@@ -52,7 +52,8 @@ export default async function WorkoutPage() {
                 </p>
                 <h2 className="text-sm font-bold text-ink">{playlist.title}</h2>
                 <p className="mt-1 text-xs text-ink-dim">
-                  {playlist.exercise_count} exercises · logs as {playlist.logged_as}
+                  {playlist.exercise_count} exercises · logs as{" "}
+                  {playlist.logged_as}
                 </p>
               </div>
             </Link>

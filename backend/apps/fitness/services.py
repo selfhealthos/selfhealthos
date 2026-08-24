@@ -1,17 +1,19 @@
-"""Playlist reads and session stats for the workout player.
+"""Playlist reads, session stats, and the one orchestration this app owns.
 
-Recording a completion is not this app's logic - see `apps.health.services.
-log_exercise`, called from `api.py`, and `ExerciseEntry`'s own docstring
-("named after the video followed"). This module only reads that table back
-for the player's own "today" counters and recent list.
+Recording a completion is not this app's logic - `apps.health` owns what an
+`ExerciseEntry` is, and `apps.social` owns who may write one to somebody
+else's account. What lives here is the sequencing of those two, because the
+workout player is the only caller that needs both.
 """
 
 from __future__ import annotations
 
 from django.utils import timezone as dj_timezone
 
+from apps.health import services as health_services
 from apps.health import timeutils
 from apps.health.models import ExerciseEntry
+from apps.social import services as social_services
 
 from .playlists import PLAYLISTS, PLAYLISTS_BY_KEY, exercises_for
 
@@ -56,15 +58,67 @@ def today_stats(user) -> dict:
 
 
 def recent_sessions(user, *, limit: int = 10) -> list[dict]:
-    rows = ExerciseEntry.objects.filter(created_by=user, deleted_at__isnull=True).order_by(
-        "-occurred_at"
-    )[: max(1, min(limit, 50))]
+    rows = (
+        ExerciseEntry.objects.filter(created_by=user, deleted_at__isnull=True)
+        .select_related("logged_by")
+        .order_by("-occurred_at")[: max(1, min(limit, 50))]
+    )
     return [
         {
             "id": row.id,
             "video_name": row.video_name,
             "duration_s": row.duration_s,
             "occurred_at": row.occurred_at,
+            # Only when somebody else logged it. log_exercise sets logged_by
+            # on solo rows too, so comparing ids is what distinguishes them.
+            "logged_by": (
+                row.logged_by.username
+                if row.logged_by_id and row.logged_by_id != row.created_by_id
+                else None
+            ),
         }
         for row in rows
     ]
+
+
+def available_partners(user) -> list[dict]:
+    """The friends this user ticked for the picker, for the player to render.
+
+    Reads `FriendPref.workout_partner`, which is a *display* filter. Whether
+    any of them may actually be logged for is decided at completion time by
+    `social_services.assert_can_log_for`, which deliberately ignores that flag.
+    """
+    return [
+        {
+            "id": friend.pk,
+            "username": friend.username,
+            "avatar_url": friend.avatar.url if friend.avatar else None,
+            "accepts_partner_logging": friend.allow_partner_logging,
+        }
+        for friend in social_services.workout_partners(user)
+    ]
+
+
+def complete_exercise(
+    user, *, video_name: str, duration_s: int, partner_ids=(), coop_group_id=None
+) -> dict:
+    """Finish one clip, for the user and anyone who trained with them.
+
+    The permission question goes to `apps.social` and the writing goes to
+    `apps.health`; the only thing decided here is that the first must happen
+    before the second, and that a refused partner aborts the whole press.
+
+    `assert_can_log_for` raises rather than filtering. A silently dropped
+    partner would leave the person looking at a ticked name next to someone
+    whose log never received the entry, which is worse than an error they can
+    do something about.
+    """
+    partners = social_services.assert_can_log_for(user, list(partner_ids))
+    health_services.log_shared_exercise(
+        user,
+        video_name=video_name,
+        duration_s=duration_s,
+        partners=partners,
+        coop_group_id=coop_group_id,
+    )
+    return today_stats(user)

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { apiGet, apiSend } from "@/lib/api/browser";
+import { ApiError, apiGet, apiSend } from "@/lib/api/browser";
 import type {
   FitnessExercise,
+  FitnessPartner,
   FitnessPlaylistDetail,
   FitnessSession,
   FitnessStats,
@@ -20,6 +21,10 @@ import { Card } from "../../ui";
  * elapsed-time clock, and the running stats all change without a navigation,
  * which is exactly what a server component can't do. `Complete` is the only
  * thing that talks to the API mid-session; `Skip` just advances.
+ *
+ * Ticking a friend sends their id with each Complete, and the backend writes
+ * that clip to their log too. Who appears here is chosen in Settings, so a
+ * long friends list doesn't turn into a long row of chips nobody trains with.
  */
 
 function shuffled<T>(items: readonly T[]): T[] {
@@ -47,6 +52,25 @@ function sessionDuration(seconds: number): string {
 //: Nothing plays past 90s - a long hold just runs out the clock in silence.
 const MILESTONES = [30, 60, 90] as const;
 
+//: Where the tick marks survive a refresh. sessionStorage, not localStorage:
+//: who you are training with is true for this session in this tab, and a
+//: selection silently carried into next week's solo workout would log entries
+//: to somebody who wasn't there. Keyed by playlist so two tabs don't collide.
+function partnerStorageKey(playlistKey: string): string {
+  return `selfhealthos:workout-partners:${playlistKey}`;
+}
+
+function readStoredPartners(playlistKey: string): string[] {
+  try {
+    const raw = sessionStorage.getItem(partnerStorageKey(playlistKey));
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    // Private mode, blocked site data, malformed JSON - none of which should
+    // stop someone working out.
+    return [];
+  }
+}
+
 function playSound(ref: React.RefObject<HTMLAudioElement | null>) {
   const el = ref.current;
   if (!el) return;
@@ -61,17 +85,48 @@ export function WorkoutPlayer({
   playlist,
   initialStats,
   initialRecent,
+  partners,
 }: {
   playlist: FitnessPlaylistDetail;
   initialStats: FitnessStats;
   initialRecent: FitnessSession[];
+  partners: FitnessPartner[];
 }) {
-  const [order, setOrder] = useState<FitnessExercise[]>(() => shuffled(playlist.exercises));
+  const [order, setOrder] = useState<FitnessExercise[]>(() =>
+    shuffled(playlist.exercises),
+  );
   const [index, setIndex] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [pending, setPending] = useState(false);
   const [stats, setStats] = useState(initialStats);
   const [recent, setRecent] = useState(initialRecent);
+  const [withPartners, setWithPartners] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // Read after mount, not in a useState initialiser: sessionStorage doesn't
+  // exist during the server render, and reading it there is a hydration
+  // mismatch.
+  useEffect(() => {
+    setWithPartners(readStoredPartners(playlist.key));
+  }, [playlist.key]);
+
+  function togglePartner(id: string) {
+    setWithPartners((current) => {
+      const next = current.includes(id)
+        ? current.filter((existing) => existing !== id)
+        : [...current, id];
+      try {
+        sessionStorage.setItem(
+          partnerStorageKey(playlist.key),
+          JSON.stringify(next),
+        );
+      } catch {
+        // Not being able to remember the selection across a refresh is a much
+        // smaller problem than not being able to make one.
+      }
+      return next;
+    });
+  }
 
   const sound30 = useRef<HTMLAudioElement>(null);
   const sound60 = useRef<HTMLAudioElement>(null);
@@ -109,10 +164,19 @@ export function WorkoutPlayer({
   async function complete() {
     if (!current || pending) return;
     setPending(true);
+    setError(null);
     try {
       const updated = await apiSend<FitnessStats>("/fitness/complete", {
         method: "POST",
-        body: { video_name: current.title, duration_s: elapsed },
+        body: {
+          video_name: current.title,
+          duration_s: elapsed,
+          partner_ids: withPartners,
+          // One id per press. The backend groups the rows it writes by this,
+          // and a retry of the same press is recognisable rather than a
+          // second session.
+          coop_group_id: crypto.randomUUID(),
+        },
       });
       if (updated) setStats(updated);
       apiGet<FitnessSession[]>("/fitness/recent")
@@ -120,6 +184,13 @@ export function WorkoutPlayer({
         .catch(() => {});
       playSound(soundCompleted);
       advance();
+    } catch (e) {
+      // The backend refuses the whole press if any partner can't be logged
+      // for, rather than quietly dropping them, so nothing was recorded and
+      // the clip is still the current one. Say so instead of advancing.
+      setError(
+        e instanceof ApiError ? e.message : "Could not record that one.",
+      );
     } finally {
       setPending(false);
     }
@@ -132,7 +203,9 @@ export function WorkoutPlayer({
   }
 
   if (!current) {
-    return <p className="text-sm text-ink-dim">This playlist has no exercises.</p>;
+    return (
+      <p className="text-sm text-ink-dim">This playlist has no exercises.</p>
+    );
   }
 
   return (
@@ -167,14 +240,24 @@ export function WorkoutPlayer({
 
         <div className="flex items-center gap-4">
           <div className="text-center">
-            <p className="text-sm font-bold tabular-nums text-ink">{stats.minutes_today}</p>
-            <p className="text-[10px] tracking-wide text-ink-muted uppercase">min today</p>
+            <p className="text-sm font-bold tabular-nums text-ink">
+              {stats.minutes_today}
+            </p>
+            <p className="text-[10px] tracking-wide text-ink-muted uppercase">
+              min today
+            </p>
           </div>
           <div className="text-center">
-            <p className="text-sm font-bold tabular-nums text-ink">{stats.completed_today}</p>
-            <p className="text-[10px] tracking-wide text-ink-muted uppercase">completed</p>
+            <p className="text-sm font-bold tabular-nums text-ink">
+              {stats.completed_today}
+            </p>
+            <p className="text-[10px] tracking-wide text-ink-muted uppercase">
+              completed
+            </p>
           </div>
-          <p className="w-12 text-center text-lg font-bold tabular-nums text-ink">{clock(elapsed)}</p>
+          <p className="w-12 text-center text-lg font-bold tabular-nums text-ink">
+            {clock(elapsed)}
+          </p>
           <button
             type="button"
             onClick={complete}
@@ -193,6 +276,53 @@ export function WorkoutPlayer({
           </button>
         </div>
       </div>
+
+      {partners.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs tracking-wide text-ink-muted uppercase">
+            Working out with
+          </span>
+          {partners.map((partner) => {
+            const on = withPartners.includes(partner.id);
+            return (
+              <button
+                key={partner.id}
+                type="button"
+                aria-pressed={on}
+                disabled={!partner.accepts_partner_logging}
+                title={
+                  partner.accepts_partner_logging
+                    ? undefined
+                    : `${partner.username} isn't accepting shared workouts`
+                }
+                onClick={() => togglePartner(partner.id)}
+                className={`rounded-full border px-3 py-1 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  on
+                    ? "border-good bg-good/15 text-good"
+                    : "border-border text-ink-dim hover:bg-surface-2"
+                }`}
+              >
+                {on ? "✓ " : ""}
+                {partner.username}
+              </button>
+            );
+          })}
+          {withPartners.length > 0 && (
+            <span className="text-xs text-ink-muted">
+              Each completed exercise is added to their log too.
+            </span>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-xl border border-critical/30 bg-critical/10 px-4 py-3 text-sm text-critical"
+        >
+          {error}
+        </p>
+      )}
 
       <div className="lg:flex lg:gap-4">
         <div className="aspect-video flex-1 overflow-hidden rounded-xl bg-black">
@@ -218,8 +348,20 @@ export function WorkoutPlayer({
             ) : (
               <ul className="space-y-2 text-sm">
                 {recent.map((session) => (
-                  <li key={session.id} className="flex items-center justify-between gap-2">
-                    <span className="truncate text-ink">{session.video_name}</span>
+                  <li
+                    key={session.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-ink">
+                      {session.video_name}
+                      {/* Whose press this was, when it wasn't yours. An entry
+                          you don't remember doing is otherwise a mystery. */}
+                      {session.logged_by && (
+                        <span className="block text-xs text-ink-muted">
+                          with {session.logged_by}
+                        </span>
+                      )}
+                    </span>
                     <span className="shrink-0 text-xs tabular-nums text-ink-muted">
                       {sessionDuration(session.duration_s)}
                     </span>

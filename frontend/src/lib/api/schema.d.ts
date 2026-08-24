@@ -989,6 +989,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fitness/partners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Friends you picked to show in the workout player */
+        get: operations["listFitnessPartners"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fitness/complete": {
         parameters: {
             query?: never;
@@ -998,7 +1015,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record one completed exercise clip */
+        /** Record one completed exercise clip, optionally for friends too */
         post: operations["completeFitnessExercise"];
         delete?: never;
         options?: never;
@@ -3465,6 +3482,28 @@ export interface components {
              * Format: date-time
              */
             occurred_at: string;
+            /** Logged By */
+            logged_by?: string | null;
+        };
+        /**
+         * FitnessPartnerOut
+         * @description A friend the player may tick. `SocialUserOut`'s fields, by design.
+         *
+         *     Kept as its own class only because the OpenAPI component map is keyed by
+         *     class name and this app's schemas must be prefixed `Fitness*`.
+         */
+        FitnessPartnerOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Username */
+            username: string;
+            /** Avatar Url */
+            avatar_url?: string | null;
+            /** Accepts Partner Logging */
+            accepts_partner_logging: boolean;
         };
         /** FitnessCompleteIn */
         FitnessCompleteIn: {
@@ -3472,6 +3511,13 @@ export interface components {
             video_name: string;
             /** Duration S */
             duration_s: number;
+            /**
+             * Partner Ids
+             * @default []
+             */
+            partner_ids: string[];
+            /** Coop Group Id */
+            coop_group_id?: string | null;
         };
         /**
          * SocialMeOut
@@ -4788,6 +4834,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FitnessSessionOut"][];
+                };
+            };
+        };
+    };
+    listFitnessPartners: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FitnessPartnerOut"][];
                 };
             };
         };
