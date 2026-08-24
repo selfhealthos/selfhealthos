@@ -472,3 +472,173 @@ def columns_for(
         if column is EXERCISE_MINUTES:
             columns.append(vo2max_threshold(age=age, sex=sex))
     return ColumnSet(columns=tuple(columns), height_m=height_m)
+
+
+# --------------------------------------------------------------------------
+# Body composition
+# --------------------------------------------------------------------------
+#
+# The three columns below are the Body page's, not the heatmap's, and they are
+# deliberately not in `FIXED`. Waist and height are tape-measure numbers taken
+# every few weeks, not daily metrics: adding them to the heatmap would widen
+# every row by two columns that are blank on 95% of days, which is the shape
+# `services.heatmap` already drops columns to avoid.
+
+
+def waist_height_threshold() -> Threshold:
+    """Waist-to-height ratio - waist and height in the same unit, divided.
+
+    The reason the Body page leads with this rather than BMI: it needs no
+    scales, it detects central adiposity that BMI misses entirely in someone of
+    "normal" weight, and the healthy limit is one number a person can actually
+    remember - keep your waist under half your height.
+    """
+    return Threshold(
+        key="waist_height_ratio",
+        label="Waist/height",
+        unit="ratio",
+        metric=None,
+        places=2,
+        # NICE NG246 (2025) and Ashwell's boundary values: 0.4-0.49 healthy,
+        # 0.5-0.59 increased central adiposity, 0.6+ high. The low arm falls
+        # away below 0.4 because a ratio that low is underweight or a
+        # mis-measured tape, not a better result than 0.45 - this is the
+        # two-sided optimum the module docstring is about.
+        anchors=(
+            (0.34, 0.2),
+            (0.40, 0.9),
+            (0.43, 1.0),
+            (0.47, 1.0),
+            (0.50, 0.75),
+            (0.55, 0.45),
+            (0.60, 0.2),
+            (0.70, 0.0),
+        ),
+        evidence="Keep your waist under half your height. 0.4-0.49 healthy, "
+        "0.5-0.59 increased, 0.6+ high central adiposity (NICE NG246 2025; "
+        "Ashwell boundary values).",
+    )
+
+
+#: WHO waist-circumference cut-offs, `(increased_risk, substantially_increased)`
+#: in cm, by sex. Europid values; the WHO notes lower cut-offs are appropriate
+#: for South Asian, Chinese and Japanese populations, which is one reason the
+#: waist-to-height ratio above is the column this page leads with - it needs no
+#: population-specific cut-off at all.
+_WAIST_CUTOFFS: dict[str, tuple[float, float]] = {
+    "male": (94.0, 102.0),
+    "female": (80.0, 88.0),
+}
+
+
+def waist_threshold(*, sex: str = "") -> Threshold:
+    """Waist circumference, banded against the WHO's sex-specific cut-offs.
+
+    Unscored without a sex on the profile. The two sets of cut-offs are 14 cm
+    apart, so picking one for someone who has not said would colour a healthy
+    82 cm waist either green or amber on a coin toss - and a colour is exactly
+    the thing that reads as certainty.
+    """
+    key = "female" if sex.strip().lower().startswith("f") else "male" if sex else ""
+    if not key:
+        return Threshold(
+            key="waist_cm",
+            label="Waist",
+            unit="cm",
+            metric=None,
+            places=1,
+            evidence="Not scored: the WHO waist cut-offs are sex-specific and "
+            "14 cm apart. Set a sex on your profile and this column bands.",
+        )
+
+    increased, substantial = _WAIST_CUTOFFS[key]
+    return Threshold(
+        key="waist_cm",
+        label="Waist",
+        unit="cm",
+        metric=None,
+        places=1,
+        # Full marks comfortably under the "increased risk" cut-off, falling
+        # away through it to "substantially increased" and beyond. The bottom
+        # anchor is well below either cut-off rather than at zero: a 55 cm
+        # waist is not a better outcome than a 70 cm one.
+        anchors=(
+            (increased - 30, 0.7),
+            (increased - 20, 1.0),
+            (increased - 8, 1.0),
+            (increased, 0.7),
+            (substantial, 0.4),
+            (substantial + 12, 0.15),
+            (substantial + 25, 0.0),
+        ),
+        evidence=f"WHO cut-offs for {key}s: {increased:.0f} cm increased risk, "
+        f"{substantial:.0f} cm substantially increased.",
+    )
+
+
+def weight_threshold(*, target_kg: float | None = None) -> Threshold:
+    """Weight, banded against this person's own target - or not at all.
+
+    `WEIGHT` above stays unscored on purpose and that reasoning has not
+    changed: there is no population threshold for a weight, and the dashboard
+    this replaced coloured 80 kg green and 60 kg red for everyone. What makes a
+    colour defensible here is that the line is one the user set themselves, so
+    the column header names the target and the colour means "against the number
+    you chose", not "against health".
+
+    The band is symmetric because a target missed by 3 kg in either direction
+    is missed by 3 kg; nothing here knows whether the goal was to lose or gain.
+    """
+    if not target_kg or target_kg <= 0:
+        return Threshold(
+            key="weight_kg",
+            label="Weight",
+            unit="kg",
+            metric="weight_kg",
+            places=1,
+            evidence="Not scored: a weight means nothing without a height or a "
+            "goal. The BMI column bands it against a height; set a target "
+            "weight and this column bands against that.",
+        )
+
+    return Threshold(
+        key="weight_kg",
+        label="Weight",
+        unit="kg",
+        metric="weight_kg",
+        places=1,
+        # Absolute kilograms, not a percentage: 3 kg is 3 kg of the same
+        # journey whether the target is 60 or 100, and a percentage band would
+        # make the same miss score differently for two people.
+        anchors=(
+            (target_kg - 12, 0.0),
+            (target_kg - 6, 0.45),
+            (target_kg - 2, 0.9),
+            (target_kg, 1.0),
+            (target_kg + 2, 0.9),
+            (target_kg + 6, 0.45),
+            (target_kg + 12, 0.0),
+        ),
+        evidence=f"Your own target of {target_kg:g} kg, not a clinical "
+        "threshold. Full marks within 2 kg, falling away either side.",
+    )
+
+
+def body_columns_for(
+    *, sex: str = "", height_cm: float | None = None, target_weight_kg: float | None = None
+) -> ColumnSet:
+    """The Body page's four columns, in the order the table draws them.
+
+    Weight first because it is the one recorded most often, then the two things
+    derived from it and the profile, then the tape measure. BMI and the ratio
+    are dropped rather than drawn blank when no height is set - a column of
+    ninety em-dashes is not information about your body.
+    """
+    height_m = height_cm / 100 if height_cm else None
+    columns: list[Threshold] = [weight_threshold(target_kg=target_weight_kg)]
+    if height_m:
+        columns.append(bmi_threshold())
+    columns.append(waist_threshold(sex=sex))
+    if height_m:
+        columns.append(waist_height_threshold())
+    return ColumnSet(columns=tuple(columns), height_m=height_m)

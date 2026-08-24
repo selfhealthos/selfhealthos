@@ -989,11 +989,19 @@ def bristol_daily(user, *, days: int = 90) -> dict:
 
 
 def body_history(user, *, days: int = 730) -> dict:
-    """Tape-measure numbers and the functional self-tests.
+    """Body composition: what was recorded, and how each reading bands.
 
-    `height_cm` rides along because waist-to-height is the number worth reading
-    and the waist alone cannot produce it. Absent height, the UI shows the
-    measurements and omits the ratio rather than assuming a height.
+    Four numbers that only mean something together - a weight needs a height
+    before it is a BMI, a waist needs a height before it is a ratio - so they
+    are assembled here rather than being four endpoints the page divides by
+    hand. `height_cm` and `target_weight_kg` ride along because both are the
+    denominator of a column: absent them the derived columns are dropped, not
+    guessed at.
+
+    The fitness self-tests used to be returned here as well. They moved to
+    `fitness_history` when this became the composition page - grip strength is
+    not a body measurement, and bundling them meant every Body request paid for
+    a query the page no longer draws.
     """
     days = max(1, min(days, 3_650))
     tz = timeutils.tz_for(user)
@@ -1001,6 +1009,16 @@ def body_history(user, *, days: int = 730) -> dict:
     start = end - timedelta(days=days - 1)
     span = {"local_date__gte": start, "local_date__lte": end}
     live = {"created_by": user, "deleted_at__isnull": True}
+
+    weights = [
+        {
+            "id": w.id,
+            "local_date": w.local_date,
+            "weight_kg": w.weight_kg,
+            "notes": w.notes,
+        }
+        for w in WeightEntry.objects.filter(**live, **span).order_by("-occurred_at")
+    ]
 
     measurements = [
         {
@@ -1012,8 +1030,146 @@ def body_history(user, *, days: int = 730) -> dict:
             "body_fat_pct": m.body_fat_pct,
             "notes": m.notes,
         }
-        for m in BodyMeasurement.objects.filter(**live, **span).order_by("-local_date")
+        # Ordered by the instant as well as the day: `_body_table` resolves two
+        # measurements on one date by taking the later one, and `-local_date`
+        # alone leaves same-day rows in whatever order the planner returns.
+        for m in BodyMeasurement.objects.filter(**live, **span).order_by(
+            "-local_date", "-occurred_at"
+        )
     ]
+
+    profile = Profile.objects.filter(user=user).first()
+    height_cm = profile.height_cm if profile else None
+    target_weight_kg = profile.target_weight_kg if profile else None
+
+    column_set = scoring.body_columns_for(
+        sex=user.sex,
+        height_cm=height_cm,
+        target_weight_kg=target_weight_kg,
+    )
+    columns, rows = _body_table(
+        user,
+        start=start,
+        end=end,
+        column_set=column_set,
+        measurements=measurements,
+    )
+
+    return {
+        "start": start,
+        "end": end,
+        "days": days,
+        "height_cm": height_cm,
+        "target_weight_kg": target_weight_kg,
+        "weights": weights,
+        "measurements": measurements,
+        "columns": columns,
+        "rows": rows,
+    }
+
+
+def _body_table(user, *, start, end, column_set, measurements) -> tuple[list[dict], list[dict]]:
+    """The scored table under the chart: one row per day something was recorded.
+
+    Rows are days with a reading rather than every day in the window, which is
+    the one place this departs from `heatmap`. A waist is measured every few
+    weeks and a weight most mornings, so a row per calendar day would be a
+    table that is 90% blank - and a blank row says nothing except that the
+    window includes days off.
+
+    Deliberately *not* carried forward. A weight from nine days ago repeated
+    down the column would colour nine cells on the strength of one weigh-in,
+    and the colour is the part a reader trusts.
+    """
+    weight_by_day: dict[date, float] = dict(
+        DailyMetric.objects.filter(
+            user=user, metric="weight_kg", local_date__gte=start, local_date__lte=end
+        ).values_list("local_date", "value")
+    )
+    # Newest wins when a day carries two measurements: `measurements` arrives
+    # newest-first, so the later row is the one already in the dict.
+    waist_by_day: dict[date, float] = {}
+    for row in reversed(measurements):
+        if row["waist_cm"] is not None:
+            waist_by_day[row["local_date"]] = row["waist_cm"]
+
+    height_m = column_set.height_m
+    rows = []
+    for day in sorted(set(weight_by_day) | set(waist_by_day), reverse=True):
+        weight = weight_by_day.get(day)
+        waist = waist_by_day.get(day)
+        cells = []
+        for column in column_set.columns:
+            value = _body_value(column.key, weight=weight, waist=waist, height_m=height_m)
+            score = column.score(value) if value is not None else None
+            cells.append(
+                {
+                    "key": column.key,
+                    "value": value,
+                    "score": score,
+                    "band": scoring.band_for(score),
+                }
+            )
+        rows.append({"date": day, "cells": cells})
+
+    columns = [
+        {
+            "key": column.key,
+            "label": column.label,
+            "unit": column.unit,
+            "places": column.places,
+            "scored": column.scored,
+            "evidence": column.evidence,
+        }
+        for column in column_set.columns
+    ]
+    return columns, rows
+
+
+def _body_value(
+    key: str, *, weight: float | None, waist: float | None, height_m: float | None
+) -> float | None:
+    """One cell, in the unit its threshold is written in.
+
+    The two derived columns are spelled out rather than expressed as data on
+    the `Threshold`, for the same reason `_heatmap_value` spells its two out:
+    two different arithmetics are clearer as two cases than as a little
+    expression language.
+    """
+    if key == "weight_kg":
+        return weight
+    if key == "waist_cm":
+        return waist
+    if key == "bmi":
+        # Guarded even though `body_columns_for` only adds the column when a
+        # height exists: the two facts are set in different places, and drifting
+        # apart here is a divide-by-zero on a page rather than a test failure.
+        if weight is None or not height_m:
+            return None
+        return weight / (height_m * height_m)
+    if key == "waist_height_ratio":
+        if waist is None or not height_m:
+            return None
+        # Waist is centimetres and height is metres, so the ratio needs one of
+        # them converted. Dividing them as they are stored gives 0.9 for a
+        # perfectly healthy person - the mistake `tests/test_health_heatmap.py`
+        # was written to catch on the BMI column.
+        return (waist / 100) / height_m
+    return None
+
+
+def fitness_history(user, *, days: int = 730) -> dict:
+    """The functional self-tests, newest first.
+
+    Split out of `body_history` when Body became the composition page. Higher
+    is better for every one of them, which is why they are not banded: there is
+    no published cut-off for a dead hang, and inventing one would put a colour
+    on a number nothing supports.
+    """
+    days = max(1, min(days, 3_650))
+    tz = timeutils.tz_for(user)
+    end = timeutils.local_date_of(_utcnow(), tz)
+    start = end - timedelta(days=days - 1)
 
     tests = [
         {
@@ -1025,18 +1181,134 @@ def body_history(user, *, days: int = 730) -> dict:
             "dead_hang_s": t.dead_hang_s,
             "notes": t.notes,
         }
-        for t in FitnessTest.objects.filter(**live, **span).order_by("-local_date")
+        for t in FitnessTest.objects.filter(
+            created_by=user,
+            deleted_at__isnull=True,
+            local_date__gte=start,
+            local_date__lte=end,
+        ).order_by("-local_date")
     ]
 
+    return {"start": start, "end": end, "days": days, "tests": tests}
+
+
+def log_measurement(
+    user,
+    *,
+    waist_cm: float | None = None,
+    hips_cm: float | None = None,
+    neck_cm: float | None = None,
+    body_fat_pct: float | None = None,
+    notes: str = "",
+    on: date | None = None,
+):
+    """Record one set of tape-measure numbers.
+
+    Every field is optional but at least one must be present: a row of four
+    nulls is a date with no measurement, which the Body table would render as a
+    row of em-dashes and the user would read as data loss.
+
+    No rollup call. `BodyMeasurement` is the one hand-logged type that does not
+    feed a `DailyMetric` - `body_history` reads the rows themselves, because a
+    waist taken every few weeks is not a daily series.
+
+    Deliberately no `client_id`, matching `log_exercise`: it is a global
+    identity key owned by the phone, and minting one here would collide with
+    the device's own numbering.
+    """
+    values = {
+        "waist_cm": _positive(waist_cm, "waist"),
+        "hips_cm": _positive(hips_cm, "hips"),
+        "neck_cm": _positive(neck_cm, "neck"),
+        "body_fat_pct": _positive(body_fat_pct, "body fat"),
+    }
+    if all(value is None for value in values.values()):
+        raise DomainError("A measurement needs at least one number.")
+
+    tz = timeutils.tz_for(user)
+    now = _utcnow()
+    local_date = on or timeutils.local_date_of(now, tz)
+    # A backdated measurement keeps a real instant on the day it is filed
+    # under, rather than pretending it was taken when it was typed.
+    occurred_at = now if on is None else timeutils.utc_from_local_parts(on, time(12, 0), tz)
+
+    entry = BodyMeasurement.objects.create(
+        created_by=user,
+        occurred_at=occurred_at,
+        local_date=local_date,
+        notes=notes.strip(),
+        **values,
+    )
+    summary = ", ".join(
+        f"{label} {values[key]:g}{unit}"
+        for key, label, unit in (
+            ("waist_cm", "waist", "cm"),
+            ("hips_cm", "hips", "cm"),
+            ("neck_cm", "neck", "cm"),
+            ("body_fat_pct", "body fat", "%"),
+        )
+        if values[key] is not None
+    )
+    record_event(verb="health.measurement.logged", actor=user, target=entry, summary=summary)
+    return entry, summary
+
+
+def _positive(value: float | None, label: str) -> float | None:
+    """A measurement, or None. Zero is not a measurement of anything."""
+    if value is None:
+        return None
+    value = float(value)
+    if value <= 0:
+        raise DomainError(f"A {label} measurement must be greater than zero.")
+    return value
+
+
+def body_profile(user) -> dict:
+    """The two profile numbers the Body page needs, creating no row to read them."""
     profile = Profile.objects.filter(user=user).first()
     return {
-        "start": start,
-        "end": end,
-        "days": days,
         "height_cm": profile.height_cm if profile else None,
-        "measurements": measurements,
-        "tests": tests,
+        "target_weight_kg": profile.target_weight_kg if profile else None,
     }
+
+
+def set_body_profile(
+    user, *, height_cm: float | None = None, target_weight_kg: float | None = None, fields=()
+) -> dict:
+    """Update height and/or target weight.
+
+    `fields` names which keys the caller actually sent, which is what makes
+    clearing one possible: `height_cm=None` means "leave it alone" unless
+    "height_cm" is in `fields`, in which case it means "unset it". Without that
+    distinction a PATCH of the target weight alone would silently wipe the
+    height, and every BMI in the table with it.
+    """
+    fields = set(fields) or {"height_cm", "target_weight_kg"}
+    profile, _ = Profile.objects.get_or_create(user=user)
+
+    if "height_cm" in fields:
+        # Loose bounds, and only to catch the metres slip: 1.78 entered for a
+        # height gives a BMI of 26,800 and a table of red cells nobody can
+        # explain. An inches slip is deliberately not caught - 70 is a real
+        # height in centimetres, and a bound that rejected it would reject a
+        # real short person to catch a typo.
+        profile.height_cm = _bounded(height_cm, 50, 260, "A height in centimetres")
+    if "target_weight_kg" in fields:
+        profile.target_weight_kg = _bounded(target_weight_kg, 20, 400, "A target weight")
+
+    profile.save(update_fields=["height_cm", "target_weight_kg", "updated_at"])
+    record_event(verb="health.profile.updated", actor=user, target=profile)
+    return {"height_cm": profile.height_cm, "target_weight_kg": profile.target_weight_kg}
+
+
+def _bounded(value: float | None, low: float, high: float, label: str) -> float | None:
+    """A number inside plausible human bounds, or None to unset it."""
+    if value is None:
+        return None
+    value = float(value)
+    if not low <= value <= high:
+        raise DomainError(f"{label} should be between {low:g} and {high:g}.")
+    return value
 
 
 # --------------------------------------------------------------------------

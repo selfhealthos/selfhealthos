@@ -24,7 +24,10 @@ from .schemas import (
     HealthActivityHistoryOut,
     HealthActivityOut,
     HealthAuthorizeOut,
+    HealthBodyMeasurementOut,
     HealthBodyOut,
+    HealthBodyProfileIn,
+    HealthBodyProfileOut,
     HealthBristolDailyOut,
     HealthConnectionCredentialsIn,
     HealthConnectionOut,
@@ -34,6 +37,7 @@ from .schemas import (
     HealthEntriesDayOut,
     HealthEntrySyncIn,
     HealthExchangeIn,
+    HealthFitnessOut,
     HealthGutOut,
     HealthGymSyncIn,
     HealthHabitHistoryOut,
@@ -42,6 +46,7 @@ from .schemas import (
     HealthHeatmapOut,
     HealthIntradayOut,
     HealthLabMarkerOut,
+    HealthMeasurementIn,
     HealthMetricOut,
     HealthNightOut,
     HealthNoteOut,
@@ -53,6 +58,8 @@ from .schemas import (
     HealthSyncQueued,
     HealthSyncResultOut,
     HealthTrendOut,
+    HealthWeightEntryOut,
+    HealthWeightIn,
     connection_to_schema,
 )
 
@@ -247,11 +254,97 @@ def get_bristol_daily(request, days: int = 90):
 @router.get(
     "/body",
     response=HealthBodyOut,
-    summary="Measurements and functional self-tests",
+    summary="Body composition: weight, BMI, waist and the ratio",
     operation_id="getHealthBody",
 )
 def get_body(request, days: int = 730):
     return services.body_history(request.auth, days=days)
+
+
+@router.post(
+    "/body/weight",
+    response={201: HealthWeightEntryOut},
+    summary="Record a weight",
+    operation_id="logHealthWeight",
+)
+def log_weight(request, payload: HealthWeightIn):
+    """One weigh-in, from the browser rather than the phone.
+
+    Goes through `services.log_entry`, which is the same function the MCP tool
+    calls - so a weight typed on the Body page and one logged in a conversation
+    land identically, rollup included. The row carries no `client_id`: that is
+    the phone's identity key and devicesync rejects one presented by anybody
+    else, so minting one here would break the device's own sync.
+    """
+    require_scope(request, "health:write")
+    entry, _ = services.log_entry(
+        request.auth, kind="weight", value=payload.weight_kg, text=payload.notes, on=payload.on
+    )
+    return Status(201, entry)
+
+
+@router.post(
+    "/body/measurement",
+    response={201: HealthBodyMeasurementOut},
+    summary="Record tape-measure numbers",
+    operation_id="logHealthMeasurement",
+)
+def log_measurement(request, payload: HealthMeasurementIn):
+    require_scope(request, "health:write")
+    entry, _ = services.log_measurement(
+        request.auth,
+        waist_cm=payload.waist_cm,
+        hips_cm=payload.hips_cm,
+        neck_cm=payload.neck_cm,
+        body_fat_pct=payload.body_fat_pct,
+        notes=payload.notes,
+        on=payload.on,
+    )
+    return Status(201, entry)
+
+
+@router.get(
+    "/body/profile",
+    response=HealthBodyProfileOut,
+    summary="Height and target weight",
+    operation_id="getHealthBodyProfile",
+)
+def get_body_profile(request):
+    return services.body_profile(request.auth)
+
+
+@router.patch(
+    "/body/profile",
+    response=HealthBodyProfileOut,
+    summary="Set height and target weight",
+    operation_id="setHealthBodyProfile",
+)
+def set_body_profile(request, payload: HealthBodyProfileIn):
+    """PATCH, not PUT, and the distinction is load-bearing.
+
+    Height and target weight are edited by two different forms on the Body
+    page. `payload.dict(exclude_unset=True)` is what tells the service which
+    keys the request actually carried, so saving a target weight cannot wipe
+    the height - and sending an explicit null still clears one on purpose.
+    """
+    require_scope(request, "health:write")
+    sent = payload.dict(exclude_unset=True)
+    return services.set_body_profile(
+        request.auth,
+        height_cm=sent.get("height_cm"),
+        target_weight_kg=sent.get("target_weight_kg"),
+        fields=sent.keys(),
+    )
+
+
+@router.get(
+    "/fitness",
+    response=HealthFitnessOut,
+    summary="Functional self-tests",
+    operation_id="getHealthFitness",
+)
+def get_fitness(request, days: int = 730):
+    return services.fitness_history(request.auth, days=days)
 
 
 @router.get(
