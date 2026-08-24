@@ -1,0 +1,24 @@
+# Deploy overlay: run from prebuilt GHCR images instead of building from
+# source on the host. Layer it on top of the base stack:
+#
+#   COMPOSE_FILE=compose.yaml:compose.prod.yaml
+#
+# `docker compose pull` fetches the tagged image below; `docker compose up
+# -d` then starts from it without rebuilding, since defining both `build`
+# (still present in compose.yaml, for local dev) and `image` on a service is
+# Compose's documented way to skip the build step once the tagged image
+# already exists locally. Set GHCR_OWNER/IMAGE_TAG in .env to pin a specific
+# release for rollback instead of always tracking `latest`.
+
+x-backend-image: &backend-image
+  image: ghcr.io/${GHCR_OWNER:-selfhealthos}/selfhealthos-backend:${IMAGE_TAG:-latest}
+
+services:
+  django:
+    <<: *backend-image
+  mcp:
+    <<: *backend-image
+  worker:
+    <<: *backend-image
+  next:
+    image: ghcr.io/${GHCR_OWNER:-selfhealthos}/selfhealthos-frontend:${IMAGE_TAG:-latest}
