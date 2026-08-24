@@ -49,7 +49,24 @@ export const SEQUENTIAL = [
 ] as const;
 
 export type SeriesPoint = { date: string; value: number };
-export type Series = { label: string; points: SeriesPoint[]; unit?: string };
+export type Axis = "left" | "right";
+export type Series = {
+  label: string;
+  points: SeriesPoint[];
+  unit?: string;
+  /**
+   * Which axis this series is measured against. Defaults to the left.
+   *
+   * A second axis is normally the wrong answer - two unrelated quantities
+   * scaled until they cross somewhere flattering is the classic misleading
+   * chart, and `vitals` refuses one for exactly that reason. It is honest here
+   * only when the two series are the *same* quantity in two units, where the
+   * mapping between the axes is exact and fixed rather than chosen to make a
+   * picture. Weight and BMI at a fixed height is that case; kilograms and
+   * millimetres of mercury is not.
+   */
+  axis?: Axis;
+};
 
 // The viewBox is a fixed coordinate space; the SVG scales to its container.
 // Chosen wide because these sit in a content column, not a dashboard tile.
@@ -154,6 +171,7 @@ export function LineChart({
   height = H,
   zeroBased = false,
   unit = "",
+  rightAxisLabel = "",
   reference,
   normalBand,
 }: {
@@ -161,8 +179,10 @@ export function LineChart({
   height?: number;
   zeroBased?: boolean;
   unit?: string;
+  /** Caption for the right-hand axis. Only drawn when a series uses it. */
+  rightAxisLabel?: string;
   /** A target line - a step goal, a blood-pressure threshold. */
-  reference?: { value: number; label: string };
+  reference?: { value: number; label: string; axis?: Axis };
   /**
    * A clinical normal range, drawn as a shaded zone behind the line.
    *
@@ -172,7 +192,7 @@ export function LineChart({
    * it look identical if the boundary is off-screen, and "95-100% is normal"
    * in the caption leaves the reader estimating where 95 falls on the axis.
    */
-  normalBand?: { from: number; to: number; label: string };
+  normalBand?: { from: number; to: number; label: string; axis?: Axis };
 }) {
   const all = series.flatMap((s) => s.points);
   if (all.length === 0) {
@@ -188,24 +208,49 @@ export function LineChart({
   const xMax = Math.max(...days);
   const xSpan = xMax - xMin || 1;
 
-  const values = all.map((p) => p.value);
-  const candidates = [
-    ...values,
-    ...(reference ? [reference.value] : []),
-    ...(normalBand ? [normalBand.from, normalBand.to] : []),
-  ];
-  const rawMin = zeroBased ? 0 : Math.min(...candidates);
-  const rawMax = Math.max(...candidates);
-  // A little headroom, so an extreme does not sit on the frame.
-  const pad = (rawMax - rawMin || Math.abs(rawMax) || 1) * 0.08;
-  const yMin = zeroBased ? 0 : rawMin - pad;
-  const yMax = rawMax + pad;
-  const ySpan = yMax - yMin || 1;
+  const hasRight = series.some((s) => s.axis === "right");
+
+  /**
+   * One axis's domain, from the series measured against it.
+   *
+   * Each axis is padded from its own data, never stretched to align with the
+   * other. Aligning them is the step that turns a second axis into a lie: the
+   * point where the lines meet becomes a fact about the padding rather than
+   * about the numbers.
+   */
+  const domainFor = (axis: Axis): [number, number] => {
+    const mine = series.filter((s) => (s.axis ?? "left") === axis);
+    const candidates = [
+      ...mine.flatMap((s) => s.points.map((p) => p.value)),
+      ...((reference?.axis ?? "left") === axis && reference ? [reference.value] : []),
+      ...((normalBand?.axis ?? "left") === axis && normalBand
+        ? [normalBand.from, normalBand.to]
+        : []),
+    ];
+    if (candidates.length === 0) return [0, 1];
+    const rawMin = zeroBased ? 0 : Math.min(...candidates);
+    const rawMax = Math.max(...candidates);
+    // A little headroom, so an extreme does not sit on the frame.
+    const pad = (rawMax - rawMin || Math.abs(rawMax) || 1) * 0.08;
+    return [zeroBased ? 0 : rawMin - pad, rawMax + pad];
+  };
+
+  const [leftMin, leftMax] = domainFor("left");
+  const [rightMin, rightMax] = domainFor("right");
+  const leftSpan = leftMax - leftMin || 1;
+  const rightSpan = rightMax - rightMin || 1;
 
   const x = (iso: string) => PAD.left + ((dayNumber(iso) - xMin) / xSpan) * PLOT_W;
-  const y = (value: number) => PAD.top + PLOT_H - ((value - yMin) / ySpan) * PLOT_H;
+  const yOn = (value: number, axis: Axis = "left") =>
+    axis === "right"
+      ? PAD.top + PLOT_H - ((value - rightMin) / rightSpan) * PLOT_H
+      : PAD.top + PLOT_H - ((value - leftMin) / leftSpan) * PLOT_H;
+  const y = (value: number) => yOn(value, "left");
 
-  const yTicks = ticks(yMin, yMax);
+  const yTicks = ticks(leftMin, leftMax);
+  // Gridlines come off the left axis alone. A second full grid would double
+  // every horizontal line on the plot for no extra information.
+  const rightTicks = hasRight ? ticks(rightMin, rightMax) : [];
   const firstDate = all.reduce((a, b) => (a.date < b.date ? a : b)).date;
   const lastDate = all.reduce((a, b) => (a.date > b.date ? a : b)).date;
 
@@ -227,14 +272,16 @@ export function LineChart({
           <g>
             <rect
               x={PAD.left}
-              y={y(Math.max(normalBand.from, normalBand.to))}
+              y={yOn(Math.max(normalBand.from, normalBand.to), normalBand.axis)}
               width={PLOT_W}
-              height={Math.abs(y(normalBand.from) - y(normalBand.to))}
+              height={Math.abs(
+                yOn(normalBand.from, normalBand.axis) - yOn(normalBand.to, normalBand.axis),
+              )}
               fill="var(--viz-normal-band)"
             />
             <text
               x={W - PAD.right - 4}
-              y={y(Math.max(normalBand.from, normalBand.to)) + 11}
+              y={yOn(Math.max(normalBand.from, normalBand.to), normalBand.axis) + 11}
               textAnchor="end"
               fontSize={10}
               fill="var(--viz-muted)"
@@ -270,13 +317,51 @@ export function LineChart({
           </g>
         ))}
 
+        {/* The right axis: tick marks and labels, no gridlines. Its ticks land
+            wherever its own domain puts them, which is rarely level with the
+            left axis's - that mismatch is the honest signal that these are two
+            rulers, not one. */}
+        {rightTicks.map((tick) => (
+          <g key={`r${tick}`}>
+            <line
+              x1={W - PAD.right}
+              x2={W - PAD.right + 4}
+              y1={yOn(tick, "right")}
+              y2={yOn(tick, "right")}
+              stroke="var(--viz-axis)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+            <text
+              x={W - PAD.right + 7}
+              y={yOn(tick, "right")}
+              dominantBaseline="middle"
+              fontSize={11}
+              fill="var(--viz-muted)"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {tickLabel(tick)}
+            </text>
+          </g>
+        ))}
+        {hasRight && rightAxisLabel && (
+          <text
+            x={W - PAD.right + 7}
+            y={PAD.top - 2}
+            fontSize={10}
+            fill="var(--viz-muted)"
+          >
+            {rightAxisLabel}
+          </text>
+        )}
+
         {reference && (
           <>
             <line
               x1={PAD.left}
               x2={W - PAD.right}
-              y1={y(reference.value)}
-              y2={y(reference.value)}
+              y1={yOn(reference.value, reference.axis)}
+              y2={yOn(reference.value, reference.axis)}
               stroke="var(--viz-axis)"
               strokeWidth={1}
               strokeDasharray="4 3"
@@ -284,7 +369,7 @@ export function LineChart({
             />
             <text
               x={W - PAD.right + 4}
-              y={y(reference.value)}
+              y={yOn(reference.value, reference.axis)}
               dominantBaseline="middle"
               fontSize={10}
               fill="var(--viz-muted)"
@@ -297,13 +382,14 @@ export function LineChart({
         {series.map((s, index) => {
           const colour = slot(index);
           const last = s.points[s.points.length - 1];
+          const ys = (value: number) => yOn(value, s.axis);
           return (
             <g key={s.label}>
               {segments(s.points).map((run, runIndex) => (
                 <path
                   key={runIndex}
                   d={run
-                    .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)},${y(p.value).toFixed(1)}`)
+                    .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)},${ys(p.value).toFixed(1)}`)
                     .join(" ")}
                   fill="none"
                   stroke={colour}
@@ -318,13 +404,13 @@ export function LineChart({
               {last && (
                 <circle
                   cx={x(last.date)}
-                  cy={y(last.value)}
+                  cy={ys(last.value)}
                   r={4}
                   fill={colour}
                   stroke="var(--viz-surface)"
                   strokeWidth={2}
                 >
-                  <title>{`${s.label}: ${last.value.toLocaleString()}${unit ? ` ${unit}` : ""} on ${last.date}`}</title>
+                  <title>{`${s.label}: ${last.value.toLocaleString()}${s.unit ?? unit ? ` ${s.unit ?? unit}` : ""} on ${last.date}`}</title>
                 </circle>
               )}
               {/* Direct label on the endpoint only. A number on every point is
@@ -332,7 +418,7 @@ export function LineChart({
               {last && series.length <= 4 && (
                 <text
                   x={x(last.date) + 8}
-                  y={y(last.value)}
+                  y={ys(last.value)}
                   dominantBaseline="middle"
                   fontSize={11}
                   fill="var(--viz-muted)"

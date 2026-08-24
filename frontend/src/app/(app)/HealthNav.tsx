@@ -41,6 +41,7 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
     title: "Fitness",
     items: [
       { href: "/workout", label: "Workout", icon: "◈" },
+      { href: "/fitness", label: "Tests", icon: "◎" },
       { href: "/friends", label: "Friends", icon: "◉" },
     ],
   },
@@ -50,7 +51,7 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
       { href: "/habits", label: "Habits", icon: "✓" },
       { href: "/diet", label: "Diet", icon: "◆" },
       { href: "/gut", label: "Gut", icon: "◍" },
-      { href: "/vitals", label: "BP + Weight", icon: "◔" },
+      { href: "/blood-pressure", label: "Blood pressure", icon: "◔" },
       { href: "/body", label: "Body", icon: "◫" },
       { href: "/labs", label: "Labs", icon: "◇" },
       { href: "/notes", label: "Notes", icon: "✎" },

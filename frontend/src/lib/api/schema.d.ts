@@ -463,8 +463,94 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Measurements and functional self-tests */
+        /** Body composition: weight, BMI, waist and the ratio */
         get: operations["getHealthBody"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/body/weight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a weight
+         * @description One weigh-in, from the browser rather than the phone.
+         *
+         *     Goes through `services.log_entry`, which is the same function the MCP tool
+         *     calls - so a weight typed on the Body page and one logged in a conversation
+         *     land identically, rollup included. The row carries no `client_id`: that is
+         *     the phone's identity key and devicesync rejects one presented by anybody
+         *     else, so minting one here would break the device's own sync.
+         */
+        post: operations["logHealthWeight"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/body/measurement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record tape-measure numbers */
+        post: operations["logHealthMeasurement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/body/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Height and target weight */
+        get: operations["getHealthBodyProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set height and target weight
+         * @description PATCH, not PUT, and the distinction is load-bearing.
+         *
+         *     Height and target weight are edited by two different forms on the Body
+         *     page. `payload.dict(exclude_unset=True)` is what tells the service which
+         *     keys the request actually carried, so saving a target weight cannot wipe
+         *     the height - and sending an explicit null still clears one on purpose.
+         */
+        patch: operations["setHealthBodyProfile"];
+        trace?: never;
+    };
+    "/api/v1/health/fitness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Functional self-tests */
+        get: operations["getHealthFitness"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2058,6 +2144,38 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** HealthBodyCellOut */
+        HealthBodyCellOut: {
+            /** Key */
+            key: string;
+            /** Value */
+            value?: number | null;
+            /** Score */
+            score?: number | null;
+            /** Band */
+            band?: number | null;
+        };
+        /**
+         * HealthBodyColumnOut
+         * @description One column of the Body table, and whether it carries a colour.
+         */
+        HealthBodyColumnOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Places */
+            places: number;
+            /** Scored */
+            scored: boolean;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+        };
         /** HealthBodyMeasurementOut */
         HealthBodyMeasurementOut: {
             /**
@@ -2100,8 +2218,116 @@ export interface components {
             days: number;
             /** Height Cm */
             height_cm?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+            /** Weights */
+            weights: components["schemas"]["HealthWeightEntryOut"][];
             /** Measurements */
             measurements: components["schemas"]["HealthBodyMeasurementOut"][];
+            /** Columns */
+            columns: components["schemas"]["HealthBodyColumnOut"][];
+            /** Rows */
+            rows: components["schemas"]["HealthBodyRowOut"][];
+        };
+        /** HealthBodyRowOut */
+        HealthBodyRowOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Cells */
+            cells: components["schemas"]["HealthBodyCellOut"][];
+        };
+        /** HealthWeightEntryOut */
+        HealthWeightEntryOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /** Weight Kg */
+            weight_kg: number;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /** HealthWeightIn */
+        HealthWeightIn: {
+            /** Weight Kg */
+            weight_kg: number;
+            /** On */
+            on?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /**
+         * HealthMeasurementIn
+         * @description Tape-measure numbers. Every field optional, but not all of them.
+         */
+        HealthMeasurementIn: {
+            /** Waist Cm */
+            waist_cm?: number | null;
+            /** Hips Cm */
+            hips_cm?: number | null;
+            /** Neck Cm */
+            neck_cm?: number | null;
+            /** Body Fat Pct */
+            body_fat_pct?: number | null;
+            /** On */
+            on?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+        };
+        /** HealthBodyProfileOut */
+        HealthBodyProfileOut: {
+            /** Height Cm */
+            height_cm?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+        };
+        /**
+         * HealthBodyProfileIn
+         * @description A PATCH of the two Body numbers.
+         *
+         *     Both optional, and `None` is a meaningful value: sending `height_cm: null`
+         *     unsets the height. `api.set_body_profile` passes the keys actually present
+         *     in the request through to the service, so an absent key means "leave it"
+         *     while a null one means "clear it".
+         */
+        HealthBodyProfileIn: {
+            /** Height Cm */
+            height_cm?: number | null;
+            /** Target Weight Kg */
+            target_weight_kg?: number | null;
+        };
+        /** HealthFitnessOut */
+        HealthFitnessOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Days */
+            days: number;
             /** Tests */
             tests: components["schemas"]["HealthFitnessTestOut"][];
         };
@@ -4216,6 +4442,120 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthBodyOut"];
+                };
+            };
+        };
+    };
+    logHealthWeight: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthWeightIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthWeightEntryOut"];
+                };
+            };
+        };
+    };
+    logHealthMeasurement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthMeasurementIn"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthBodyMeasurementOut"];
+                };
+            };
+        };
+    };
+    getHealthBodyProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthBodyProfileOut"];
+                };
+            };
+        };
+    };
+    setHealthBodyProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthBodyProfileIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthBodyProfileOut"];
+                };
+            };
+        };
+    };
+    getHealthFitness: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthFitnessOut"];
                 };
             };
         };
