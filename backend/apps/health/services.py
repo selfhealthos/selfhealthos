@@ -1825,6 +1825,119 @@ def office_report(user, *, days: int | None = None) -> dict:
     }
 
 
+#: Southern Hemisphere, deliberately - this deployment's default timezone is
+#: `Australia/Melbourne` (see `timeutils.DEFAULT_TZ`), and a season mapping
+#: that assumed the Northern Hemisphere would not fail loudly - it would
+#: silently swap summer and winter, autumn and spring, and every card on the
+#: report would look plausible while being backwards. Worth stating in code,
+#: not just a comment, given `one-data/CLAUDE.md` already documents one prior
+#: analysis quietly inverted by exactly this kind of assumption (`wfh.ndjson`;
+#: see `OfficeDay`).
+_SEASON_BY_MONTH = {
+    12: "summer",
+    1: "summer",
+    2: "summer",
+    3: "autumn",
+    4: "autumn",
+    5: "autumn",
+    6: "winter",
+    7: "winter",
+    8: "winter",
+    9: "spring",
+    10: "spring",
+    11: "spring",
+}
+_SEASON_BUCKETS = ("summer", "autumn", "winter", "spring")
+
+
+def season_report(user, *, days: int | None = None) -> dict:
+    """Every tracked metric, averaged by the season its day fell in.
+
+    The sibling of `office_report` - same shape, same per-metric swing
+    ranking - but every calendar day maps to exactly one of four buckets
+    with no "unknown" case to exclude, since a season is a fact about the
+    date rather than something that has to be marked.
+
+    `days=None` is "all time", and is the more useful default here: a
+    90-day window rarely spans more than one or two seasons, so a
+    meaningful summer-vs-winter comparison needs at least a full year of
+    history behind it.
+    """
+    from . import rollups
+
+    end = timeutils.local_date_of(_utcnow(), timeutils.tz_for(user))
+    start = (
+        (rollups.data_span(user)[0] or end)
+        if days is None
+        else end - timedelta(days=max(1, days) - 1)
+    )
+
+    buckets: dict[date, str] = {}
+    cursor = start
+    while cursor <= end:
+        buckets[cursor] = _SEASON_BY_MONTH[cursor.month]
+        cursor += timedelta(days=1)
+
+    day_counts = {b: sum(1 for v in buckets.values() if v == b) for b in _SEASON_BUCKETS}
+
+    metrics_out = []
+    for definition in metric_defs.DAILY:
+        rows = (
+            DailyMetric.objects.filter(user=user)
+            .series(definition.key, start, end)
+            .values_list("local_date", "value")
+        )
+        by_bucket: dict[str, list[float]] = {b: [] for b in _SEASON_BUCKETS}
+        for local_date, value in rows:
+            bucket = buckets.get(local_date)
+            if bucket:
+                by_bucket[bucket].append(value)
+
+        present = {b: vals for b, vals in by_bucket.items() if vals}
+        if len(present) < 2:
+            continue  # not enough overlapping data yet to compare
+
+        means = {b: fmean(vals) for b, vals in present.items()}
+        overall = fmean([v for vals in present.values() for v in vals])
+        spread = max(means.values()) - min(means.values())
+        swing_pct = (spread / overall * 100) if overall else None
+
+        direction = (
+            "up"
+            if definition.key in _HIGHER_IS_BETTER
+            else "down"
+            if definition.key in _LOWER_IS_BETTER
+            else None
+        )
+
+        metrics_out.append(
+            {
+                "metric": definition.key,
+                "label": definition.label,
+                "unit": definition.unit,
+                "direction": direction,
+                "summer": means.get("summer"),
+                "autumn": means.get("autumn"),
+                "winter": means.get("winter"),
+                "spring": means.get("spring"),
+                "summer_days": len(by_bucket["summer"]),
+                "autumn_days": len(by_bucket["autumn"]),
+                "winter_days": len(by_bucket["winter"]),
+                "spring_days": len(by_bucket["spring"]),
+                "swing_pct": swing_pct,
+            }
+        )
+
+    metrics_out.sort(key=lambda m: m["swing_pct"] or 0, reverse=True)
+
+    return {
+        "start": start,
+        "end": end,
+        "days": day_counts,
+        "metrics": metrics_out,
+    }
+
+
 def set_office_day(user, local_date: date, *, worked: bool) -> dict:
     """Mark or unmark one day as worked in the office, from the portal.
 

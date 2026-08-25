@@ -55,6 +55,7 @@ from .schemas import (
     HealthOfficeOut,
     HealthOfficeReportOut,
     HealthPhotoSyncOut,
+    HealthSeasonReportOut,
     HealthSleepHistoryOut,
     HealthSummaryOut,
     HealthSyncQueued,
@@ -421,6 +422,16 @@ def unset_office_day(request, on: date):
 )
 def get_office_report(request, days: int | None = None):
     return services.office_report(request.auth, days=days)
+
+
+@router.get(
+    "/seasons/report",
+    response=HealthSeasonReportOut,
+    summary="Every metric averaged by season: summer, autumn, winter, spring",
+    operation_id="getHealthSeasonReport",
+)
+def get_season_report(request, days: int | None = None):
+    return services.season_report(request.auth, days=days)
 
 
 @router.get(

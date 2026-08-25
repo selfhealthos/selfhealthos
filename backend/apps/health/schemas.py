@@ -605,6 +605,42 @@ class HealthOfficeReportOut(Schema):
     metrics: list[HealthOfficeReportMetricOut]
 
 
+# -- seasons ------------------------------------------------------------
+
+
+class HealthSeasonReportDaysOut(Schema):
+    summer: int
+    autumn: int
+    winter: int
+    spring: int
+
+
+class HealthSeasonReportMetricOut(Schema):
+    metric: str
+    label: str
+    unit: str
+    #: "up" or "down" - see `HealthOfficeReportMetricOut.direction`, the same
+    #: restraint applies here.
+    direction: str | None = None
+    summer: float | None = None
+    autumn: float | None = None
+    winter: float | None = None
+    spring: float | None = None
+    summer_days: int
+    autumn_days: int
+    winter_days: int
+    spring_days: int
+    #: See `HealthOfficeReportMetricOut.swing_pct`.
+    swing_pct: float | None = None
+
+
+class HealthSeasonReportOut(Schema):
+    start: date
+    end: date
+    days: HealthSeasonReportDaysOut
+    metrics: list[HealthSeasonReportMetricOut]
+
+
 # -- sleep ------------------------------------------------------------------
 
 
