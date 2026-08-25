@@ -19,6 +19,7 @@ from ninja.files import UploadedFile
 from apps.core.exceptions import DomainError
 from apps.core.services import record_event
 
+from . import services
 from .models import User
 
 router = Router(tags=["auth"])
@@ -46,6 +47,24 @@ class UserOut(Schema):
     avatar_url: str | None = None
     timezone: str = "UTC"
     is_staff: bool = False
+
+
+class AccountProfileIn(Schema):
+    """Every field optional - see `services.update_profile` on why PATCH."""
+
+    timezone: str | None = None
+
+
+class AccountTimezonesOut(Schema):
+    """The picker's options, plus what the caller is currently set to.
+
+    `current` rides along so the page can select the right option without a
+    second request, and so a zone outside `timezones` (a legacy alias set by
+    an API client) is still shown rather than silently reading as unset.
+    """
+
+    timezones: list[str]
+    current: str
 
 
 class CsrfOut(Schema):
@@ -134,6 +153,34 @@ def logout_view(request):
 @router.get("/me", response=UserOut, operation_id="getCurrentUser")
 def me(request):
     return _user_out(request.user)
+
+
+@router.patch("/me", response=UserOut, operation_id="updateCurrentUser")
+def update_me(request, payload: AccountProfileIn):
+    """Edit your own account settings.
+
+    Not scope-gated, matching `/me/avatar`: there is no `accounts:*` scope in
+    `apps.tokens.scopes`, and inventing one here would grant it to nobody -
+    none of the token presets carry it - while making the browser's own
+    session the only caller that works. If account writes ever need to be
+    delegable to a token, add the scope to the vocabulary first.
+    """
+    sent = payload.dict(exclude_unset=True)
+    user = services.update_profile(request.auth, timezone=sent.get("timezone"), fields=sent.keys())
+    return _user_out(user)
+
+
+@router.get("/timezones", response=AccountTimezonesOut, operation_id="listTimezones")
+def timezones(request):
+    """The IANA zone list, read from this server's own tz database.
+
+    Served rather than hardcoded in the frontend so the list the picker offers
+    and the list `set_timezone` validates against can never disagree.
+    """
+    return AccountTimezonesOut(
+        timezones=services.timezone_choices(),
+        current=request.auth.timezone,
+    )
 
 
 @router.post("/me/avatar", response=UserOut, operation_id="uploadAvatar")

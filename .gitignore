@@ -27,6 +27,21 @@ frontend/.env.local
 # schema.d.ts is the committed source of truth, this is just scratch input.
 frontend/openapi.json
 
+# --- Android (mobile/) ---
+# mobile/ also carries its own Android-Studio-generated .gitignore files
+# (mobile/.gitignore, mobile/app/.gitignore) that already cover these — listed
+# here too so they're visible in the one place the rest of the project's
+# ignores live, and so they still apply if those nested files ever go away.
+mobile/app/build/
+mobile/.gradle/
+mobile/.kotlin/
+mobile/local.properties
+mobile/build.log
+# Exercise videos pushed to a device for local testing (see mobile/README.md)
+# - not source, and nearly 1GB.
+mobile/videos/
+mobile/.claude/settings.local.json
+
 # --- Docker / compose local overrides ---
 docker-compose.override.yml
 

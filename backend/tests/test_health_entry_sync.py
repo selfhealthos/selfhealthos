@@ -171,6 +171,26 @@ class TestPerRowOutcomes:
         rejected_ids = {r["id"] for r in body["rejected"]}
         assert rejected_ids.isdisjoint(set(body["accepted"]))
 
+    def test_two_office_days_for_the_same_date_reject_the_second_not_the_batch(
+        self, post, phone_user
+    ):
+        """OfficeDay is one row per day. A second phone row for a date already
+        taken must be a named rejection, not a 500 that strands everything
+        else in the same batch — including unrelated types sent alongside it.
+        """
+        first = row(date="2026-08-06")
+        second = row(date="2026-08-06")
+        weight = row(timestamp=NOW_MS, weight_kg=80.0)
+
+        response = post({"office_days": [first, second], "weight": [weight]})
+        body = response.json()
+
+        assert response.status_code == 200
+        assert body["accepted"] == [first["id"], weight["id"]]
+        assert body["rejected"] == [{"id": second["id"], "reason": "conflicts with an existing record"}]
+        assert OfficeDay.objects.filter(created_by=phone_user).count() == 1
+        assert WeightEntry.objects.filter(created_by=phone_user).count() == 1
+
     def test_an_unknown_type_is_ignored_not_fatal(self, post, phone_user):
         """A newer phone must degrade to "that type stays queued"."""
         response = post({"weight": [row(timestamp=NOW_MS, weight_kg=80.0)], "moonphase": []})

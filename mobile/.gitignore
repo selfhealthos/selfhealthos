@@ -1,0 +1,20 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+# Kotlin compiler scratch dir. Holds only error logs, and they are per-build.
+.kotlin/
+local.properties
+videos/
+build.log
+.claude/settings.local.json

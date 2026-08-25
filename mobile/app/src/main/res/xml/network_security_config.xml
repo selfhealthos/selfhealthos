@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Trust for the SelfHealthOS server the operator points this app at.
+
+  SelfHealthOS ships with no bundled reverse proxy and serves plain HTTP by
+  default (`docker compose up` on port 80) — see the root CLAUDE.md. The
+  server address is entered by the operator at runtime (Settings' "Server
+  URL"), not known at build time, so the base config allows cleartext to any
+  host, matching the stock deployment. An operator fronting their instance
+  with a reverse proxy and a public CA gets HTTPS for free, unchanged, since
+  system trust anchors are kept below.
+
+  This build's own instance is the exception: it's fronted with a leaf from
+  the private Laverty Root CA, which no public authority (and so no phone)
+  has ever heard of — `health.laverty` is not a public TLD, and `.crt` is
+  scoped to these two addresses only, not installed device-wide, so a
+  compromise of it cannot be used to intercept traffic to anywhere else.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- The name, for when DNS is working. -->
+    <domain-config>
+        <domain includeSubdomains="true">health.laverty</domain>
+        <trust-anchors>
+            <certificates src="@raw/laverty_root_ca" />
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!--
+      The address, for when it is not. `192.168.1.111` is the default
+      `DEFAULT_SERVER_URL` in `SettingsRepository.kt` precisely because
+      `health.laverty` doesn't reliably resolve on the phone.
+    -->
+    <domain-config>
+        <domain>192.168.1.111</domain>
+        <trust-anchors>
+            <certificates src="@raw/laverty_root_ca" />
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

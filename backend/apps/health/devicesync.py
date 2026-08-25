@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 
@@ -51,6 +52,25 @@ class Rejected(Exception):
     def __init__(self, reason: str):
         super().__init__(reason)
         self.reason = reason
+
+
+def _write(fn) -> None:
+    """Run one write in its own savepoint, turning a constraint clash into a
+    named rejection instead of a request-wide 500.
+
+    A handful of models carry a uniqueness rule beyond `client_id` - `OfficeDay`
+    is one row per day, for instance, so two phone rows naming the same date
+    collide. Uncaught, `IntegrityError` doesn't just fail that row: it poisons
+    whatever transaction wraps the request, so every row after it in the same
+    batch fails too, and the phone gets a 500 instead of a reply naming the
+    one bad row. The savepoint keeps the damage local to this write so the
+    rest of the batch still commits.
+    """
+    try:
+        with transaction.atomic():
+            fn()
+    except IntegrityError as exc:
+        raise Rejected("conflicts with an existing record") from exc
 
 
 def merge(
@@ -86,12 +106,12 @@ def merge(
             # server. Nothing to tombstone, and writing one would invent a row
             # the server never held. Accepted, so the phone stops resending.
             return Outcome.UNCHANGED
-        model.objects.create(
+        _write(lambda: model.objects.create(
             client_id=client_id,
             client_updated_at=client_updated_at,
             created_by=user,
             **defaults,
-        )
+        ))
         return Outcome.CREATED
 
     if (
@@ -118,5 +138,5 @@ def merge(
     # the timestamps already encode, applied to the tombstone rather than to a
     # column, and it is what lets an accidental delete be undone by re-saving.
     existing.deleted_at = None
-    existing.save()
+    _write(existing.save)
     return Outcome.UPDATED
