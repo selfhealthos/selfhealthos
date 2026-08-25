@@ -1524,7 +1524,15 @@ def entries_for_day(user, on: date | None = None) -> dict:
     rows: list[dict] = []
 
     for entry in DietEntry.objects.filter(**live):
-        rows.append({"id": entry.id, "type": "diet", "at": entry.occurred_at, "value": entry.name})
+        rows.append(
+            {
+                "id": entry.id,
+                "type": "diet",
+                "at": entry.occurred_at,
+                "value": entry.name,
+                "image_url": entry.photo.url if entry.photo else None,
+            }
+        )
 
     for entry in ExerciseEntry.objects.filter(**live):
         rows.append(
@@ -1585,6 +1593,7 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "type": "doc",
                 "at": entry.occurred_at,
                 "value": entry.title or "Untitled document",
+                "image_url": entry.photo.url if entry.photo else None,
             }
         )
 

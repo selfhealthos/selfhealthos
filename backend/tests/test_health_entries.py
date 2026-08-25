@@ -12,11 +12,12 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.utils import timezone
 
 from apps.health import services
-from apps.health.models import BpEntry, DietEntry, Note, WeightEntry
+from apps.health.models import BpEntry, DietEntry, Doc, Note, WeightEntry
 
 User = get_user_model()
 PASSWORD = "x" * 14
@@ -65,6 +66,28 @@ def test_entries_are_flattened_and_sorted_oldest_first(alex, today):
     assert result["entries"][0]["value"] == "82.4 kg"
     assert result["entries"][1]["value"] == "porridge"
     assert result["entries"][2]["value"] == "118/76 mmHg"
+
+
+def test_diet_and_doc_rows_carry_their_photo_url(alex, today, tmp_path, settings):
+    """A photo attaches to its row via `/sync/photo`, well after
+    `entries_for_day` has already been rendering that row without one - the
+    timeline must pick it up once it exists, not just at creation.
+    """
+    settings.MEDIA_ROOT = tmp_path
+    photo = SimpleUploadedFile("meal.jpg", b"not-really-a-jpeg", content_type="image/jpeg")
+
+    diet = DietEntry.objects.create(
+        created_by=alex, name="porridge", occurred_at=at(today, 8), local_date=today, photo=photo
+    )
+    Doc.objects.create(
+        created_by=alex, title="Referral", occurred_at=at(today, 9), local_date=today
+    )
+
+    result = services.entries_for_day(alex, today)
+    by_type = {e["type"]: e for e in result["entries"]}
+
+    assert by_type["diet"]["image_url"] == diet.photo.url
+    assert by_type["doc"]["image_url"] is None
 
 
 def test_a_note_written_in_the_old_block_format_shows_plain_text(alex, today):

@@ -530,6 +530,10 @@ class HealthEntryOut(Schema):
     label: str
     at: datetime
     value: str
+    #: Set only for `diet`/`doc` rows with a synced photo. See
+    #: `HealthDietEntryOut.image_url` for why it can be null on a row that
+    #: otherwise looks complete.
+    image_url: str | None = None
 
 
 class HealthEntriesDayOut(Schema):
