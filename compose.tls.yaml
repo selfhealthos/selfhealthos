@@ -1,0 +1,63 @@
+# Opt-in TLS terminator, for when selfhealthos itself is the thing on :443.
+#
+# The default `docker compose up` publishes ${HTTP_PORT} in the clear and that
+# is the right shape for trying this out. It is the wrong shape for a phone on
+# the LAN: the Android app sends a `shos_pat_` bearer token on every sync, and
+# on plain HTTP that token and the health payload are readable by anything else
+# on the wifi.
+#
+# Neither selfhealthos image can serve TLS - `next` and django both speak plain
+# HTTP - so terminating it needs one more container. This is that container and
+# nothing else: no ACME, no second site, no shared ingress.
+#
+# Opt in from your .env:
+#
+#   COMPOSE_FILE=compose.yaml:compose.dev.yaml:compose.tls.yaml
+#   COMPOSE_PATH_SEPARATOR=:
+#   TLS_SITE_ADDRESS=https://192.168.1.111
+#   TLS_SNI=<the cert's primary name>
+#   TLS_CERT_FILE=/path/to/server.crt
+#   TLS_KEY_FILE=/path/to/server.key
+#
+# Then set HTTP_PORT to loopback (127.0.0.1:8080) so the app is not also
+# reachable unencrypted, and add the address to DJANGO_ALLOWED_HOSTS and
+# DJANGO_CSRF_TRUSTED_ORIGINS.
+#
+# Mutually exclusive with compose.proxy.yaml - that one hands `next` to a proxy
+# you already run; this one *is* the proxy. Naming both means two things want
+# :443.
+services:
+  tls:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${TLS_HTTP_PORT:-80}:80"
+      - "${TLS_HTTPS_PORT:-443}:443"
+    environment:
+      TLS_SITE_ADDRESS: ${TLS_SITE_ADDRESS:?required - e.g. https://192.168.1.111}
+      TLS_SNI: ${TLS_SNI:?required - the certificate's primary name, e.g. health.laverty}
+    volumes:
+      - ./deploy/tls/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Mounted as individual files, not as their directory. A cert directory
+      # on a homelab box usually also holds the CA's private key and every
+      # other host's key; bind-mounting the directory would put all of them a
+      # path-traversal bug away from being served. Only these two are here.
+      - ${TLS_CERT_FILE:?required - path to the server certificate}:/certs/server.crt:ro
+      - ${TLS_KEY_FILE:?required - path to the server private key}:/certs/server.key:ro
+      - tlsdata:/data
+      - tlsconfig:/config
+    depends_on:
+      next:
+        condition: service_started
+
+  next:
+    # Next's standalone server binds `process.env.HOSTNAME`, which Docker sets
+    # to the container ID when the image does not - and Docker resolves that to
+    # the container's *primary* network IP only. Harmless while there is one
+    # network, a silent ECONNREFUSED from `tls` the moment there are two.
+    environment:
+      HOSTNAME: "0.0.0.0"
+
+volumes:
+  tlsdata:
+  tlsconfig:
