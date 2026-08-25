@@ -541,6 +541,11 @@ class HealthEntriesDayOut(Schema):
     entries: list[HealthEntryOut]
 
 
+class HealthEntryDeleteOut(Schema):
+    id: UUID
+    deleted: bool = True
+
+
 # -- office days ------------------------------------------------------------
 
 

@@ -12,6 +12,7 @@ weight chart.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from uuid import UUID
 
 from django.conf import settings
 from ninja import File, Form, Router, Status
@@ -37,6 +38,7 @@ from .schemas import (
     HealthDietLogOut,
     HealthDocOut,
     HealthEntriesDayOut,
+    HealthEntryDeleteOut,
     HealthEntrySyncIn,
     HealthExchangeIn,
     HealthFitnessOut,
@@ -112,6 +114,17 @@ def get_day(request, on: date):
 )
 def get_entries(request, on: date | None = None):
     return services.entries_for_day(request.auth, on)
+
+
+@router.delete(
+    "/entries/{entry_type}/{entry_id}",
+    response=HealthEntryDeleteOut,
+    summary="Delete one entry from the entries timeline",
+    operation_id="deleteHealthEntry",
+)
+def delete_entry(request, entry_type: str, entry_id: UUID):
+    services.delete_entry(request.auth, entry_type=entry_type, entry_id=entry_id)
+    return HealthEntryDeleteOut(id=entry_id)
 
 
 @router.get(

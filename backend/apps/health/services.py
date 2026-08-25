@@ -1500,6 +1500,21 @@ _ENTRY_TYPES: tuple[tuple[str, str], ...] = (
     ("fitness_test", "Fitness test"),
 )
 
+#: The model behind each entries-timeline type, for the one write this
+#: read-only-feeling timeline actually supports: deleting a row by the type
+#: and id the page already has from `entries_for_day`.
+_ENTRY_MODELS: dict[str, type] = {
+    "diet": DietEntry,
+    "exercise": ExerciseEntry,
+    "gut": BmEntry,
+    "vitals_bp": BpEntry,
+    "vitals_weight": WeightEntry,
+    "note": Note,
+    "doc": Doc,
+    "body": BodyMeasurement,
+    "fitness_test": FitnessTest,
+}
+
 
 def _join_present(pairs: list[tuple[str, object]]) -> str:
     """`"Waist 82cm · Hips 96cm"` from whichever fields were actually taken."""
@@ -1648,6 +1663,38 @@ def entries_for_day(user, on: date | None = None) -> dict:
     rows.sort(key=lambda r: r["at"])
 
     return {"date": on, "entries": rows}
+
+
+def delete_entry(user, *, entry_type: str, entry_id) -> None:
+    """Tombstone one row from the entries timeline, by its own type and id.
+
+    Soft delete, like every write in this app that touches a `DeviceEntry` -
+    see the root CLAUDE.md's devicesync-merge-semantics trap. A row here may
+    have come from the phone and could still be resynced; a hard delete would
+    leave nothing to stop that resync bringing it straight back, the same
+    reason `set_office_day` tombstones `OfficeDay` rather than removing it.
+
+    Scoped to `created_by=user` and an unknown type or id both raise
+    `NotFound` rather than silently doing nothing - a delete a person cannot
+    tell succeeded from failed is worse than an error.
+    """
+    from . import rollups
+
+    model = _ENTRY_MODELS.get(entry_type)
+    if model is None:
+        raise NotFound(f"unknown entry type {entry_type!r}")
+
+    entry = model.objects.filter(pk=entry_id, created_by=user, deleted_at__isnull=True).first()
+    if entry is None:
+        raise NotFound("entry not found")
+
+    entry.deleted_at = _utcnow()
+    entry.save(update_fields=["deleted_at"])
+
+    # Harmless for the types with no chart behind them (doc, body,
+    # fitness_test) - rebuild is idempotent and this keeps the deletion path
+    # from needing to know which types matter to the rollup.
+    rollups.rebuild(user, entry.local_date, entry.local_date)
 
 
 # --------------------------------------------------------------------------
