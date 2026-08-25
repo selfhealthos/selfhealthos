@@ -36,7 +36,17 @@ DEFAULT_TZ = ZoneInfo("Australia/Melbourne")
 
 
 def tz_for(user) -> ZoneInfo:
-    """The subject's timezone. `User.timezone` already defaults to Melbourne."""
+    """The subject's timezone, and the anchor for every "what happened today".
+
+    `User.timezone` defaults to `"UTC"`, *not* to `DEFAULT_TZ` - the fallback
+    below only fires for a blank or unrecognised value, so a user who has
+    never set theirs is UTC. That gap is not cosmetic: `local_date` is stored
+    from this at write time while every day-bounded read recomputes "today"
+    from it, so a subject in +10 whose column still says UTC files a morning
+    entry under a date the server considers tomorrow and drops it from the
+    Body page and the entries timeline alike. Set it - the profile page does,
+    via `apps.accounts.services.set_timezone`.
+    """
     name = getattr(user, "timezone", None)
     if not name:
         return DEFAULT_TZ

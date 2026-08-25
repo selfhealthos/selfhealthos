@@ -113,6 +113,39 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /**
+         * Update Me
+         * @description Edit your own account settings.
+         *
+         *     Not scope-gated, matching `/me/avatar`: there is no `accounts:*` scope in
+         *     `apps.tokens.scopes`, and inventing one here would grant it to nobody -
+         *     none of the token presets carry it - while making the browser's own
+         *     session the only caller that works. If account writes ever need to be
+         *     delegable to a token, add the scope to the vocabulary first.
+         */
+        patch: operations["updateCurrentUser"];
+        trace?: never;
+    };
+    "/api/v1/auth/timezones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Timezones
+         * @description The IANA zone list, read from this server's own tz database.
+         *
+         *     Served rather than hardcoded in the frontend so the list the picker offers
+         *     and the list `set_timezone` validates against can never disagree.
+         */
+        get: operations["listTimezones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -1376,6 +1409,28 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /**
+         * AccountProfileIn
+         * @description Every field optional - see `services.update_profile` on why PATCH.
+         */
+        AccountProfileIn: {
+            /** Timezone */
+            timezone?: string | null;
+        };
+        /**
+         * AccountTimezonesOut
+         * @description The picker's options, plus what the caller is currently set to.
+         *
+         *     `current` rides along so the page can select the right option without a
+         *     second request, and so a zone outside `timezones` (a legacy alias set by
+         *     an API client) is still shown rather than silently reading as unset.
+         */
+        AccountTimezonesOut: {
+            /** Timezones */
+            timezones: string[];
+            /** Current */
+            current: string;
         };
         /** ScopeOut */
         ScopeOut: {
@@ -3994,6 +4049,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserOut"];
+                };
+            };
+        };
+    };
+    updateCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountProfileIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+        };
+    };
+    listTimezones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountTimezonesOut"];
                 };
             };
         };

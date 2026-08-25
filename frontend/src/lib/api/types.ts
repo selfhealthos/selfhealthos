@@ -6,6 +6,11 @@ import type { components } from "./schema";
 
 export type User = components["schemas"]["UserOut"];
 
+// The timezone picker's options. Served rather than hardcoded here so the
+// list offered and the list the backend validates against cannot drift - see
+// `apps.accounts.services.timezone_choices`.
+export type AccountTimezones = components["schemas"]["AccountTimezonesOut"];
+
 // Access tokens. `AccessTokenCreated` is the only shape carrying the secret,
 // and only on the 201 - the database holds a hash, so nothing can return it
 // afterwards.
