@@ -60,6 +60,12 @@ class UnknownMetric(DomainError, ValueError):
     title = "Unknown metric"
 
 
+class FutureDate(DomainError):
+    """An entry filed under a day that has not happened yet."""
+
+    title = "That date is in the future"
+
+
 # --------------------------------------------------------------------------
 # Catalogue
 # --------------------------------------------------------------------------
@@ -1192,6 +1198,29 @@ def fitness_history(user, *, days: int = 730) -> dict:
     return {"start": start, "end": end, "days": days, "tests": tests}
 
 
+def _filed_on(user, on: date | None, tz):
+    """Resolve and validate the day an entry is filed under.
+
+    A future `on` is rejected rather than stored. `local_date` is written at
+    save time while every read recomputes its window as `<= today`, so a
+    forward-dated row is accepted, rolled up, and then filtered out of the
+    Body table and the entries timeline by both - a success message followed
+    by a value that appears nowhere. Backdating stays open; only the
+    direction that cannot be displayed is closed.
+
+    Tomorrow *here* may still be today in the subject's own timezone, which is
+    why the comparison runs against their calendar rather than the server's.
+    """
+    today = timeutils.local_date_of(_utcnow(), tz)
+    if on is None:
+        return today
+    if on > today:
+        raise FutureDate(
+            f"{on.isoformat()} has not happened yet - it is {today.isoformat()} where you are."
+        )
+    return on
+
+
 def log_measurement(
     user,
     *,
@@ -1227,7 +1256,7 @@ def log_measurement(
 
     tz = timeutils.tz_for(user)
     now = _utcnow()
-    local_date = on or timeutils.local_date_of(now, tz)
+    local_date = _filed_on(user, on, tz)
     # A backdated measurement keeps a real instant on the day it is filed
     # under, rather than pretending it was taken when it was typed.
     occurred_at = now if on is None else timeutils.utc_from_local_parts(on, time(12, 0), tz)
@@ -2062,7 +2091,7 @@ def log_entry(
 
     tz = timeutils.tz_for(user)
     now = _utcnow()
-    local_date = on or timeutils.local_date_of(now, tz)
+    local_date = _filed_on(user, on, tz)
     # A backdated entry keeps a real instant on the day it is filed under,
     # rather than pretending it happened at the moment it was typed.
     occurred_at = now if on is None else timeutils.utc_from_local_parts(on, time(12, 0), tz)

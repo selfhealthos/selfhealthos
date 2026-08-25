@@ -24,6 +24,12 @@ import type { HealthBodyProfile } from "@/lib/api/types";
  * stored rather than computed, so filing it today would put it on the wrong
  * row of the table permanently. A height has no date - it is the current
  * value every past BMI is recomputed against.
+ *
+ * Backwards only. `services._filed_on` refuses a future date, and the
+ * comparison runs in the subject's own timezone (Profile), not the server's -
+ * so this is the one form whose validity depends on a setting on a different
+ * page. The error text says which day the server thinks it is, because that
+ * mismatch is the whole diagnosis.
  */
 
 /** Blank means "not entered", which is different from zero. */
@@ -147,8 +153,10 @@ export function RecordWeight() {
         <Field label="Date" type="date" value={on} onChange={setOn} />
       </div>
       <p className="mt-2 text-xs text-ink-muted">
-        Leave the date blank for today. Two weigh-ins on one day are two readings of a number that
-        moved, not two samples of one — the later one is what the chart plots.
+        Leave the date blank for today, or backdate a weigh-in you forgot — a future date is
+        refused, because &ldquo;today&rdquo; here is measured in your profile timezone and nothing
+        would display it. Two weigh-ins on one day are two readings of a number that moved, not two
+        samples of one — the later one is what the chart plots.
       </p>
       <div className="mt-3">
         <Submit busy={busy}>Record weight</Submit>

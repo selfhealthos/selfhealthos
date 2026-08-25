@@ -11,13 +11,14 @@ showed nothing.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import Client
+from django.test import Client, override_settings
 
 from apps.accounts import services as account_services
 from apps.core.exceptions import DomainError
@@ -43,22 +44,45 @@ def signed_in(sydneysider):
     return client
 
 
-def test_the_column_default_is_utc_not_the_timeutils_fallback(sydneysider):
-    """The drift that made the bug invisible.
+def test_a_new_account_starts_in_the_configured_timezone(sydneysider):
+    """The drift that made the bug invisible, now closed.
 
-    `timeutils.DEFAULT_TZ` is Melbourne and `tz_for`'s docstring used to claim
-    the column defaulted to it. It does not - it defaults to `"UTC"`, which is
-    non-empty and valid, so the Melbourne fallback never fires. If this ever
-    flips, the docstring on `tz_for` is wrong again.
+    `settings.TIME_ZONE` and `timeutils.DEFAULT_TZ` both named Melbourne while
+    every new account was hardcoded to `"UTC"` - non-empty and valid, so the
+    Melbourne fallback in `tz_for` never fired and the disagreement was
+    silent. All three now agree unless the subject changes it themselves.
     """
+    from django.conf import settings
+
     from apps.health import timeutils
 
-    assert sydneysider.timezone == "UTC"
-    assert timeutils.tz_for(sydneysider) == ZoneInfo("UTC")
+    assert sydneysider.timezone == settings.TIME_ZONE
+    assert timeutils.tz_for(sydneysider) == ZoneInfo(settings.TIME_ZONE)
+
+
+def test_the_default_follows_the_setting_rather_than_being_frozen():
+    """The migration serialises a reference, not a value.
+
+    `default=settings.TIME_ZONE` would have baked whichever zone the machine
+    that generated the migration happened to use into every install.
+    """
+    from django.conf import settings
+
+    from apps.accounts.models import default_timezone
+
+    with override_settings(TIME_ZONE="America/New_York"):
+        assert default_timezone() == "America/New_York"
+    assert default_timezone() == settings.TIME_ZONE
 
 
 def test_a_morning_weigh_in_is_lost_while_the_timezone_is_wrong(sydneysider):
-    """The original failure, reproduced end to end. Not an error anywhere."""
+    """The original failure, reproduced end to end. Not an error anywhere.
+
+    Set to UTC by hand: that was the old column default, and an account that
+    predates the migration - or one whose owner picked UTC - still behaves
+    exactly this way. The fix is the picker, not the default.
+    """
+    account_services.set_timezone(sydneysider, "UTC")
     with patch.object(health_services, "_utcnow", return_value=SYDNEY_MORNING):
         # The browser's date picker offers the subject's own Tuesday.
         health_services.log_entry(sydneysider, kind="weight", value=70.0, on=None)
@@ -90,8 +114,6 @@ def test_setting_the_timezone_puts_the_weigh_in_back_on_the_page(sydneysider):
 
 def test_a_backdated_entry_is_filed_in_the_subjects_own_calendar(sydneysider):
     """`on=` is a date in the subject's timezone, not the server's."""
-    from datetime import date
-
     account_services.set_timezone(sydneysider, "Australia/Sydney")
     with patch.object(health_services, "_utcnow", return_value=SYDNEY_MORNING):
         entry, _ = health_services.log_entry(
@@ -116,6 +138,7 @@ def test_patch_me_sets_the_timezone(signed_in, sydneysider):
 
 
 def test_patch_me_rejects_a_zone_the_server_does_not_know(signed_in, sydneysider):
+    before = sydneysider.timezone
     resp = signed_in.patch(
         "/api/v1/auth/me",
         data={"timezone": "Australia/Sidney"},
@@ -123,7 +146,7 @@ def test_patch_me_rejects_a_zone_the_server_does_not_know(signed_in, sydneysider
     )
     assert resp.status_code == 400
     sydneysider.refresh_from_db()
-    assert sydneysider.timezone == "UTC"
+    assert sydneysider.timezone == before
 
 
 def test_patch_me_leaves_an_unsent_field_alone(signed_in, sydneysider):
@@ -153,7 +176,7 @@ def test_the_picker_list_offers_real_places_and_not_the_etc_traps(signed_in):
     assert "Australia/Sydney" in body["timezones"]
     assert "Australia/Melbourne" in body["timezones"]
     assert "UTC" in body["timezones"]
-    assert body["current"] == "UTC"
+    assert body["current"] == settings.TIME_ZONE
     # `Etc/GMT+10` is *west* of Greenwich - offering it in a dropdown is
     # offering a trap. Legacy aliases are out for the same reason.
     assert not [name for name in body["timezones"] if name.startswith(("Etc/", "US/"))]
@@ -167,3 +190,72 @@ def test_a_legacy_alias_still_validates_even_though_it_is_not_offered(sydneyside
     account_services.set_timezone(sydneysider, "US/Pacific")
     assert sydneysider.timezone == "US/Pacific"
     assert "US/Pacific" not in account_services.timezone_choices()
+
+
+class TestFutureDates:
+    """A day that has not happened yet is refused, not silently swallowed.
+
+    `local_date` is written at save time while every read recomputes its
+    window as `<= today`, so a forward-dated row used to be accepted, rolled
+    up, and then filtered out of both the Body table and the entries
+    timeline - a success message followed by a value that appears nowhere.
+    """
+
+    def test_a_weight_dated_tomorrow_is_rejected(self, sydneysider):
+        from datetime import timedelta
+
+        account_services.set_timezone(sydneysider, "Australia/Sydney")
+        with patch.object(health_services, "_utcnow", return_value=SYDNEY_MORNING):
+            tomorrow = health_services.timeutils.local_date_of(
+                SYDNEY_MORNING, ZoneInfo("Australia/Sydney")
+            ) + timedelta(days=1)
+            with pytest.raises(DomainError):
+                health_services.log_entry(sydneysider, kind="weight", value=70.0, on=tomorrow)
+
+    def test_a_measurement_dated_tomorrow_is_rejected(self, sydneysider):
+        from datetime import timedelta
+
+        account_services.set_timezone(sydneysider, "Australia/Sydney")
+        with patch.object(health_services, "_utcnow", return_value=SYDNEY_MORNING):
+            tomorrow = health_services.timeutils.local_date_of(
+                SYDNEY_MORNING, ZoneInfo("Australia/Sydney")
+            ) + timedelta(days=1)
+            with pytest.raises(DomainError):
+                health_services.log_measurement(sydneysider, waist_cm=85.0, on=tomorrow)
+
+    def test_the_api_reports_it_rather_than_returning_201(self, signed_in, sydneysider):
+        from datetime import date, timedelta
+
+        account_services.set_timezone(sydneysider, "Australia/Sydney")
+        resp = signed_in.post(
+            "/api/v1/health/body/weight",
+            data={"weight_kg": 70.0, "on": (date.today() + timedelta(days=2)).isoformat()},
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        assert "has not happened yet" in resp.json()["detail"]
+
+    def test_today_in_the_subjects_timezone_is_not_the_future(self, sydneysider):
+        """The comparison runs against their calendar, not the server's.
+
+        At 23:45 UTC it is already tomorrow in Sydney. A subject there filing
+        an entry under their own today must not be told it is in the future
+        just because the server has not reached that date.
+        """
+        account_services.set_timezone(sydneysider, "Australia/Sydney")
+        with patch.object(health_services, "_utcnow", return_value=SYDNEY_MORNING):
+            entry, _ = health_services.log_entry(
+                sydneysider, kind="weight", value=70.0, on=date(2026, 8, 25)
+            )
+        assert entry.local_date.isoformat() == "2026-08-25"
+
+    def test_backdating_is_still_open(self, sydneysider):
+        """Only the direction that cannot be displayed is closed."""
+        from datetime import timedelta
+
+        account_services.set_timezone(sydneysider, "Australia/Sydney")
+        with patch.object(health_services, "_utcnow", return_value=SYDNEY_MORNING):
+            entry, _ = health_services.log_entry(
+                sydneysider, kind="weight", value=70.0, on=date(2026, 8, 25) - timedelta(days=30)
+            )
+        assert entry.local_date.isoformat() == "2026-07-26"
