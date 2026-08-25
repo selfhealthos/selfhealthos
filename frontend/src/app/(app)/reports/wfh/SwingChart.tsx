@@ -1,6 +1,6 @@
 import type { HealthOfficeReportMetric } from "@/lib/api/types";
 
-import { ticks, tickLabel } from "../../charts";
+import { ticks } from "../../charts";
 
 /**
  * One card per metric: a title, an "avg" badge, a small chart, and a footer
@@ -78,6 +78,22 @@ const PAD_BOTTOM = 20;
 const PAD_SIDE = 34;
 const LABEL_X = 20;
 const PLOT_H = H - PAD_TOP - PAD_BOTTOM;
+
+/**
+ * A y-axis tick, kept to a handful of characters regardless of the metric's
+ * own scale - a step count in the thousands and a sleep stage in minutes
+ * share the same narrow label column here, unlike the wide charts on
+ * `../../charts.tsx` that can afford a `tickLabel` with full precision. A
+ * label wider than that column doesn't get clipped by its card - it draws
+ * past the SVG's own left edge and disappears entirely.
+ */
+function axisTick(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 10_000) return `${Math.round(value / 1000)}k`;
+  if (abs >= 1000) return `${Math.round((value / 1000) * 10) / 10}k`;
+  if (abs >= 100) return Math.round(value).toLocaleString();
+  return (Math.round(value * 10) / 10).toString();
+}
 
 function slotX(index: number): number {
   const usable = W - PAD_SIDE * 2;
@@ -160,7 +176,7 @@ function MetricDots({ metric }: { metric: HealthOfficeReportMetric }) {
             fontSize={9}
             fill="var(--viz-muted)"
           >
-            {tickLabel(tick)}
+            {axisTick(tick)}
           </text>
         </g>
       ))}
@@ -208,7 +224,7 @@ function MetricBars({ metric }: { metric: HealthOfficeReportMetric }) {
         vectorEffect="non-scaling-stroke"
       />
       <text x={LABEL_X} y={PAD_TOP} textAnchor="end" dominantBaseline="hanging" fontSize={9} fill="var(--viz-muted)">
-        {tickLabel(max)}
+        {axisTick(max)}
       </text>
       <text x={LABEL_X} y={y0} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--viz-muted)">
         0
