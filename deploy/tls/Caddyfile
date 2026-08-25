@@ -1,0 +1,49 @@
+# TLS terminator for a LAN-only selfhealthos instance.
+#
+# selfhealthos ships no reverse proxy and neither image speaks TLS: `next`
+# serves plain HTTP on 3000 and django serves plain HTTP on 8000 (see the root
+# CLAUDE.md). Something has to hold the certificate, and this is the smallest
+# thing that can: one site, one upstream, no ACME.
+#
+# Loaded only when COMPOSE_FILE names compose.tls.yaml. Operators who front
+# selfhealthos with their own proxy should use compose.proxy.yaml instead -
+# this file is for the case where selfhealthos *is* the thing on :443.
+
+{
+	# A client reaching the box by IP cannot send SNI - that field carries a
+	# hostname, never an address - so Caddy has no name to select a
+	# certificate by and aborts the handshake. This names the certificate to
+	# fall back to. The cert must carry the IP as a SAN for the client to
+	# actually validate it rather than merely be served it; check with:
+	#   openssl x509 -in <cert> -noout -ext subjectAltName
+	default_sni {$TLS_SNI}
+}
+
+{$TLS_SITE_ADDRESS} {
+	# Supplied by the operator, not issued by Caddy. Naming a cert here is
+	# also what stops Caddy trying ACME for a name no public CA can sign.
+	tls /certs/server.crt /certs/server.key
+
+	encode zstd gzip
+
+	log {
+		output stdout
+		format console
+	}
+
+	# MCP over Streamable HTTP: flush_interval -1 disables response
+	# buffering. Without it the SSE stream sits in Caddy's buffer and the
+	# client hangs on connect with no error on either side.
+	handle /mcp* {
+		reverse_proxy next:3000 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else - /api, /admin, /media, /static and the UI - is proxied
+	# by `next` itself over the compose network (frontend/next.config.ts), so
+	# this stays a single upstream and needs to know none of that.
+	handle {
+		reverse_proxy next:3000
+	}
+}
