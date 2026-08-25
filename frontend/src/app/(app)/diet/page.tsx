@@ -124,13 +124,26 @@ export default async function DietPage({
             ) : (
               <ol className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {log.entries.map((entry) => (
-                  <li key={entry.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+                  <li key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                     <span className="w-20 shrink-0 text-xs tabular-nums text-slate-400 dark:text-slate-600">
                       {shortDate(entry.local_date)}
                     </span>
                     <span className="w-10 shrink-0 text-xs tabular-nums text-slate-400 dark:text-slate-600">
                       {clock(entry.at, timeZone)}
                     </span>
+                    {entry.image_url && (
+                      <a href={entry.image_url} target="_blank" rel="noreferrer" className="shrink-0">
+                        {/* Plain <img>: a user upload of unknown dimensions from the
+                            same origin, so next/image's resizing pipeline and its
+                            width/height requirement buy nothing here. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={entry.image_url}
+                          alt={entry.name}
+                          className="h-8 w-8 rounded object-cover"
+                        />
+                      </a>
+                    )}
                     <span className="text-sm">{entry.name}</span>
                     {entry.flags.map((key) => {
                       const flag = flagLabel.get(key);
