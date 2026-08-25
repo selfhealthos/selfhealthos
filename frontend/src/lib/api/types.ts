@@ -64,6 +64,9 @@ export type HealthOfficeDay = components["schemas"]["HealthOfficeDayOut"];
 export type HealthOfficeReport = components["schemas"]["HealthOfficeReportOut"];
 export type HealthOfficeReportMetric =
   components["schemas"]["HealthOfficeReportMetricOut"];
+export type HealthSeasonReport = components["schemas"]["HealthSeasonReportOut"];
+export type HealthSeasonReportMetric =
+  components["schemas"]["HealthSeasonReportMetricOut"];
 export type HealthSleepHistory = components["schemas"]["HealthSleepHistoryOut"];
 export type HealthSleepSession = components["schemas"]["HealthSleepSessionOut"];
 export type HealthNight = components["schemas"]["HealthNightOut"];

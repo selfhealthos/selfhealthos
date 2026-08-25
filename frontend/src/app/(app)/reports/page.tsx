@@ -22,6 +22,12 @@ const REPORTS = [
     description:
       "Every metric averaged by day type — WFH, office, weekend — so you can see what going in actually does to your body.",
   },
+  {
+    href: "/reports/seasons",
+    title: "Seasons",
+    description:
+      "Every metric averaged by season — summer, autumn, winter, spring — so you can see how the time of year moves your body.",
+  },
 ];
 
 export default function ReportsPage() {

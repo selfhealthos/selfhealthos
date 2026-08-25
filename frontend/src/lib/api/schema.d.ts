@@ -695,6 +695,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/seasons/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every metric averaged by season: summer, autumn, winter, spring */
+        get: operations["getHealthSeasonReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/sleep": {
         parameters: {
             query?: never;
@@ -2637,6 +2654,62 @@ export interface components {
             covers_to?: string | null;
             /** Metrics */
             metrics: components["schemas"]["HealthOfficeReportMetricOut"][];
+        };
+        /** HealthSeasonReportDaysOut */
+        HealthSeasonReportDaysOut: {
+            /** Summer */
+            summer: number;
+            /** Autumn */
+            autumn: number;
+            /** Winter */
+            winter: number;
+            /** Spring */
+            spring: number;
+        };
+        /** HealthSeasonReportMetricOut */
+        HealthSeasonReportMetricOut: {
+            /** Metric */
+            metric: string;
+            /** Label */
+            label: string;
+            /** Unit */
+            unit: string;
+            /** Direction */
+            direction?: string | null;
+            /** Summer */
+            summer?: number | null;
+            /** Autumn */
+            autumn?: number | null;
+            /** Winter */
+            winter?: number | null;
+            /** Spring */
+            spring?: number | null;
+            /** Summer Days */
+            summer_days: number;
+            /** Autumn Days */
+            autumn_days: number;
+            /** Winter Days */
+            winter_days: number;
+            /** Spring Days */
+            spring_days: number;
+            /** Swing Pct */
+            swing_pct?: number | null;
+        };
+        /** HealthSeasonReportOut */
+        HealthSeasonReportOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            days: components["schemas"]["HealthSeasonReportDaysOut"];
+            /** Metrics */
+            metrics: components["schemas"]["HealthSeasonReportMetricOut"][];
         };
         /**
          * HealthSleepColumnOut
@@ -4852,6 +4925,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthOfficeReportOut"];
+                };
+            };
+        };
+    };
+    getHealthSeasonReport: {
+        parameters: {
+            query?: {
+                days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthSeasonReportOut"];
                 };
             };
         };
