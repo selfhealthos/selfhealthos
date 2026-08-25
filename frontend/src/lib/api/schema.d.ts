@@ -712,6 +712,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/ai-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A markdown export of everything tracked, for pasting into an AI chatbot */
+        get: operations["getHealthAiReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/sleep": {
         parameters: {
             query?: never;
@@ -2710,6 +2727,26 @@ export interface components {
             days: components["schemas"]["HealthSeasonReportDaysOut"];
             /** Metrics */
             metrics: components["schemas"]["HealthSeasonReportMetricOut"][];
+        };
+        /** HealthAiReportOut */
+        HealthAiReportOut: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Markdown */
+            markdown: string;
         };
         /**
          * HealthSleepColumnOut
@@ -4947,6 +4984,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthSeasonReportOut"];
+                };
+            };
+        };
+    };
+    getHealthAiReport: {
+        parameters: {
+            query?: {
+                days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthAiReportOut"];
                 };
             };
         };

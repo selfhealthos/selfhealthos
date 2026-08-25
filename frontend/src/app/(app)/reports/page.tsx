@@ -28,6 +28,12 @@ const REPORTS = [
     description:
       "Every metric averaged by season — summer, autumn, winter, spring — so you can see how the time of year moves your body.",
   },
+  {
+    href: "/reports/ai-prompt",
+    title: "AI Prompt Report",
+    description:
+      "Everything tracked, as one markdown document ready to paste into ChatGPT, Gemini or Claude for your own health insight.",
+  },
 ];
 
 export default function ReportsPage() {
