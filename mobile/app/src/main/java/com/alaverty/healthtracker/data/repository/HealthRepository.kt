@@ -147,6 +147,9 @@ class HealthRepository @Inject constructor(
     suspend fun getUnsyncedBpEntries() = bpDao.getUnsynced()
 
     suspend fun markDietEntriesSynced(ids: List<String>) = dietDao.markSynced(ids)
+
+    suspend fun getPendingDietPhotoUploads() = dietDao.getPendingPhotoUploads()
+    suspend fun markDietPhotoSynced(id: String) = dietDao.markPhotoSynced(id)
     suspend fun markExerciseEntriesSynced(ids: List<String>) = exerciseDao.markSynced(ids)
     suspend fun markNotesSynced(ids: List<String>) = noteDao.markSynced(ids)
     suspend fun markBmEntriesSynced(ids: List<String>) = bmDao.markSynced(ids)
@@ -196,6 +199,9 @@ class HealthRepository @Inject constructor(
     suspend fun getUnsyncedDocs() = docDao.getUnsynced()
     suspend fun markDocsSynced(ids: List<String>) = docDao.markSynced(ids)
 
+    suspend fun getPendingDocPhotoUploads() = docDao.getPendingPhotoUploads()
+    suspend fun markDocPhotoSynced(id: String) = docDao.markPhotoSynced(id)
+
     // Gym
     fun getAllGymExercises(): kotlinx.coroutines.flow.Flow<List<GymExercise>> = gymExerciseDao.getAll()
     suspend fun getAllGymExercisesSnapshot(): List<GymExercise> = gymExerciseDao.getAllSnapshot()
@@ -234,7 +240,8 @@ class HealthRepository @Inject constructor(
         bmDao.countUnsynced(), bpDao.countUnsynced(), weightDao.countUnsynced(),
         bodyMeasurementDao.countUnsynced(), fitnessTestDao.countUnsynced(),
         docDao.countUnsynced(), labResultDao.countUnsynced(), wfhDao.countUnsynced(),
-        habitDao.countUnsynced(), habitCompletionDao.countUnsynced()
+        habitDao.countUnsynced(), habitCompletionDao.countUnsynced(),
+        dietDao.countPendingPhotoUploads(), docDao.countPendingPhotoUploads()
     ) { counts -> counts.sum() }
 
     suspend fun getUnsyncedGymSets() = gymSetDao.getUnsynced()

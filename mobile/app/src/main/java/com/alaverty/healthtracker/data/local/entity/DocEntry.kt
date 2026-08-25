@@ -13,6 +13,8 @@ data class DocEntry(
     val timestamp: Long,
     val updatedAt: Long = System.currentTimeMillis(),
     val isSynced: Boolean = false,
+    /** See `DietEntry.photoSynced` - same reason, same second request. */
+    val photoSynced: Boolean = false,
     /**
      * Soft delete. A row removed here must survive long enough to tell the
      * portal about it: a hard delete would leave the entry on the server

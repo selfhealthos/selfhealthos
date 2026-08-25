@@ -14,6 +14,7 @@ import com.alaverty.healthtracker.sync.EnrolmentService
 import com.alaverty.healthtracker.sync.EntrySyncManager
 import com.alaverty.healthtracker.sync.GymSyncManager
 import com.alaverty.healthtracker.sync.GymSyncStatus
+import com.alaverty.healthtracker.sync.PhotoSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,6 +39,7 @@ class SettingsViewModel @Inject constructor(
     private val enrolmentService: EnrolmentService,
     private val gymSyncManager: GymSyncManager,
     private val entrySyncManager: EntrySyncManager,
+    private val photoSyncManager: PhotoSyncManager,
     tokenStore: TokenStore
 ) : ViewModel() {
 
@@ -65,8 +67,10 @@ class SettingsViewModel @Inject constructor(
      * two independent syncs has to report the unhealthier one, or it is not
      * reporting at all.
      */
-    val syncStatus = combine(gymSyncManager.status, entrySyncManager.status) { gym, entry ->
-        if (severity(gym) >= severity(entry)) gym else entry
+    val syncStatus = combine(
+        gymSyncManager.status, entrySyncManager.status, photoSyncManager.status
+    ) { gym, entry, photo ->
+        listOf(gym, entry, photo).maxBy { severity(it) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GymSyncStatus.Idle)
 
     /**
@@ -121,6 +125,9 @@ class SettingsViewModel @Inject constructor(
      */
     fun syncGymNow() {
         viewModelScope.launch { gymSyncManager.sync() }
+        // Photo uploads ride along: entrySyncManager.sync() calls
+        // photoSyncManager.sync() on every path, empty batch included, so a
+        // picture stuck behind an earlier network failure retries here too.
         viewModelScope.launch { entrySyncManager.sync() }
     }
 

@@ -13,6 +13,14 @@ data class DietEntry(
     val updatedAt: Long = System.currentTimeMillis(),
     val isSynced: Boolean = false,
     /**
+     * Whether [photoPath]'s file has reached the portal. Separate from
+     * [isSynced]: the row's fields go up in the JSON batch, but the actual
+     * bytes are a second, multipart request that can only succeed once the
+     * row exists server-side - see `PhotoSyncManager`. Meaningless when
+     * [photoPath] is null.
+     */
+    val photoSynced: Boolean = false,
+    /**
      * Soft delete. A row removed here must survive long enough to tell the
      * portal about it: a hard delete would leave the entry on the server
      * forever with nothing left locally to say it went. Purged once the

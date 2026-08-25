@@ -74,6 +74,14 @@ data class EntrySyncResponse(
 
 data class SyncRejection(val id: String, val reason: String)
 
+/**
+ * The reply from `POST /api/v1/health/sync/photo` — one file, one outcome.
+ * Unlike the batch endpoints there is nothing to accept partially; `reason`
+ * is set only when `stored` is false, and distinguishes "the entry has not
+ * synced yet, try again" from "this will never work" without parsing prose.
+ */
+data class PhotoSyncResponse(val stored: Boolean, val reason: String? = null)
+
 // --------------------------------------------------------------------------
 // Rows
 // --------------------------------------------------------------------------

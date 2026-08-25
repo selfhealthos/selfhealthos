@@ -36,7 +36,8 @@ class EntrySyncManager @Inject constructor(
     private val repository: HealthRepository,
     private val api: HomeApi,
     private val tokens: TokenStore,
-    private val settings: SettingsRepository
+    private val settings: SettingsRepository,
+    private val photoSyncManager: PhotoSyncManager
 ) {
     private val _status = MutableStateFlow<GymSyncStatus>(GymSyncStatus.Idle)
 
@@ -63,6 +64,13 @@ class EntrySyncManager @Inject constructor(
         val request = collect()
         if (request.isEmpty) {
             _status.value = GymSyncStatus.UpToDate(System.currentTimeMillis())
+            // A photo can be stuck here with no entry row waiting behind it -
+            // its row synced on an earlier pass, the picture itself failed
+            // (offline, most likely) and there is nothing else in this batch
+            // to bring the retry along. Without this call the only way to
+            // retry it is the Settings button; the hourly sweep would never
+            // find an empty entries batch worth acting on and stop here.
+            photoSyncManager.sync()
             return@withLock GymSyncResult.NothingToDo
         }
 
@@ -90,6 +98,12 @@ class EntrySyncManager @Inject constructor(
             // earlier and a delete it never received would be gone from here
             // too, with nothing left to resend.
             repository.purgeSyncedEntryTombstones()
+
+            // A diet or doc row's photo can only attach once the row itself
+            // exists server-side, which this call just confirmed. Running it
+            // here rather than leaving every caller to remember it is the
+            // same reasoning as `HealthRepository.syncSoon()`.
+            photoSyncManager.sync()
 
             if (body.rejected.isNotEmpty()) {
                 // Surfaced rather than retried into oblivion, and left
