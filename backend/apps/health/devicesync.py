@@ -106,12 +106,14 @@ def merge(
             # server. Nothing to tombstone, and writing one would invent a row
             # the server never held. Accepted, so the phone stops resending.
             return Outcome.UNCHANGED
-        _write(lambda: model.objects.create(
-            client_id=client_id,
-            client_updated_at=client_updated_at,
-            created_by=user,
-            **defaults,
-        ))
+        _write(
+            lambda: model.objects.create(
+                client_id=client_id,
+                client_updated_at=client_updated_at,
+                created_by=user,
+                **defaults,
+            )
+        )
         return Outcome.CREATED
 
     if (

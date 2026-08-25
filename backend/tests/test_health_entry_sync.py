@@ -187,7 +187,9 @@ class TestPerRowOutcomes:
 
         assert response.status_code == 200
         assert body["accepted"] == [first["id"], weight["id"]]
-        assert body["rejected"] == [{"id": second["id"], "reason": "conflicts with an existing record"}]
+        assert body["rejected"] == [
+            {"id": second["id"], "reason": "conflicts with an existing record"}
+        ]
         assert OfficeDay.objects.filter(created_by=phone_user).count() == 1
         assert WeightEntry.objects.filter(created_by=phone_user).count() == 1
 
