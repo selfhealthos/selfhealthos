@@ -310,6 +310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/entries/{entry_type}/{entry_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one entry from the entries timeline */
+        delete: operations["deleteHealthEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/today": {
         parameters: {
             query?: never;
@@ -1888,6 +1905,19 @@ export interface components {
             value: string;
             /** Image Url */
             image_url?: string | null;
+        };
+        /** HealthEntryDeleteOut */
+        HealthEntryDeleteOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
         };
         /** HealthTrendOut */
         HealthTrendOut: {
@@ -4469,6 +4499,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthEntriesDayOut"];
+                };
+            };
+        };
+    };
+    deleteHealthEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_type: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthEntryDeleteOut"];
                 };
             };
         };
