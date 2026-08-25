@@ -1938,6 +1938,18 @@ def season_report(user, *, days: int | None = None) -> dict:
     }
 
 
+def ai_prompt_report(user, *, days: int | None = None) -> dict:
+    """A markdown export of everything tracked, for pasting into an AI chatbot.
+
+    See `ai_report.build` for the shape and the reasoning; this is a thin
+    call-through so the router only ever imports from `services`, the same
+    convention every other report here follows.
+    """
+    from . import ai_report
+
+    return ai_report.build(user, days=days)
+
+
 def set_office_day(user, local_date: date, *, worked: bool) -> dict:
     """Mark or unmark one day as worked in the office, from the portal.
 

@@ -24,6 +24,7 @@ from .schemas import (
     HealthActivityDayOut,
     HealthActivityHistoryOut,
     HealthActivityOut,
+    HealthAiReportOut,
     HealthAuthorizeOut,
     HealthBodyMeasurementOut,
     HealthBodyOut,
@@ -432,6 +433,16 @@ def get_office_report(request, days: int | None = None):
 )
 def get_season_report(request, days: int | None = None):
     return services.season_report(request.auth, days=days)
+
+
+@router.get(
+    "/ai-report",
+    response=HealthAiReportOut,
+    summary="A markdown export of everything tracked, for pasting into an AI chatbot",
+    operation_id="getHealthAiReport",
+)
+def get_ai_report(request, days: int | None = None):
+    return services.ai_prompt_report(request.auth, days=days)
 
 
 @router.get(

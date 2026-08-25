@@ -641,6 +641,20 @@ class HealthSeasonReportOut(Schema):
     metrics: list[HealthSeasonReportMetricOut]
 
 
+# -- AI prompt report ---------------------------------------------------
+
+
+class HealthAiReportOut(Schema):
+    generated_at: datetime
+    start: date
+    end: date
+    #: The whole document, ready to paste into a chatbot. Not split into
+    #: fields per section - a chatbot reads prose, and there is no second
+    #: consumer of the pieces the way `HealthOfficeReportOut.metrics` has
+    #: the report page as one and MCP as a plausible second.
+    markdown: str
+
+
 # -- sleep ------------------------------------------------------------------
 
 
