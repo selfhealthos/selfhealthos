@@ -72,7 +72,11 @@ const W = 200;
 const H = 108;
 const PAD_TOP = 14;
 const PAD_BOTTOM = 20;
-const PAD_SIDE = 26;
+// Wider than the y-axis label column (`LABEL_X`) needs, on purpose: the first
+// bucket sits at `PAD_SIDE`, and a bar half-width either side of that would
+// otherwise reach back over the label it shares a row with.
+const PAD_SIDE = 34;
+const LABEL_X = 20;
 const PLOT_H = H - PAD_TOP - PAD_BOTTOM;
 
 function slotX(index: number): number {
@@ -149,7 +153,7 @@ function MetricDots({ metric }: { metric: HealthOfficeReportMetric }) {
             vectorEffect="non-scaling-stroke"
           />
           <text
-            x={PAD_SIDE - 6}
+            x={LABEL_X}
             y={y(tick)}
             textAnchor="end"
             dominantBaseline="middle"
@@ -183,7 +187,7 @@ function MetricBars({ metric }: { metric: HealthOfficeReportMetric }) {
   const max = axisTicks[axisTicks.length - 1] ?? rawMax;
   const y0 = H - PAD_BOTTOM;
   const barY = (v: number) => y0 - (v / max) * PLOT_H;
-  const barWidth = 26;
+  const barWidth = 22;
 
   return (
     <svg
@@ -203,10 +207,10 @@ function MetricBars({ metric }: { metric: HealthOfficeReportMetric }) {
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
       />
-      <text x={PAD_SIDE - 6} y={PAD_TOP} textAnchor="end" dominantBaseline="hanging" fontSize={9} fill="var(--viz-muted)">
+      <text x={LABEL_X} y={PAD_TOP} textAnchor="end" dominantBaseline="hanging" fontSize={9} fill="var(--viz-muted)">
         {tickLabel(max)}
       </text>
-      <text x={PAD_SIDE - 6} y={y0} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--viz-muted)">
+      <text x={LABEL_X} y={y0} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--viz-muted)">
         0
       </text>
       {points.map((p) => (
