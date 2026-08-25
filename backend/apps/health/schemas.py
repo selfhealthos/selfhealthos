@@ -267,6 +267,10 @@ class HealthDietEntryOut(Schema):
     at: datetime
     local_date: date
     flags: list[str] = []
+    #: Null until the phone has uploaded the photo via `/sync/photo` - the row
+    #: itself lands with the rest of the batch well before that, so the entry
+    #: is never hidden for want of a picture. See `HealthDocOut.image_url`.
+    image_url: str | None = None
 
 
 class HealthTopFoodOut(Schema):
@@ -513,7 +517,7 @@ class HealthDocOut(Schema):
     title: str = ""
     at: datetime
     local_date: date
-    #: Null until the media backfill matches a file to the row.
+    #: Null until the phone uploads the photo via `/sync/photo`.
     image_url: str | None = None
 
 
@@ -1196,3 +1200,17 @@ class HealthSyncResultOut(Schema):
     updated: int = 0
     unchanged: int = 0
     deleted: int = 0
+
+
+class HealthPhotoSyncOut(Schema):
+    """One file, one reply - unlike the batch endpoints, a photo upload is
+    never worth grouping: multipart bodies do not compose the way JSON rows
+    do, and a phone with several pending photos already retries them one at a
+    time.
+    """
+
+    stored: bool
+    #: Set only when `stored` is false. Named so the phone can tell "the entry
+    #: has not synced yet - try again next pass" from "this will never work"
+    #: without parsing prose.
+    reason: str | None = None
