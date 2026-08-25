@@ -98,6 +98,17 @@ export default async function EntriesPage({
                 className="h-1"
                 style={{ backgroundColor: TYPE_COLOURS[entry.type] ?? "var(--viz-1)" }}
               />
+              <div className="p-3">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold tracking-wide text-ink-dim uppercase">
+                    {entry.label}
+                  </span>
+                  <span className="text-xs tabular-nums text-ink-muted">
+                    {clock(entry.at, TIME_ZONE)}
+                  </span>
+                </div>
+                <p className="text-sm text-ink">{entry.value}</p>
+              </div>
               {entry.image_url && (
                 <a href={entry.image_url} target="_blank" rel="noreferrer">
                   {/* Plain <img>: a same-origin user upload of unknown
@@ -111,17 +122,6 @@ export default async function EntriesPage({
                   />
                 </a>
               )}
-              <div className="p-3">
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold tracking-wide text-ink-dim uppercase">
-                    {entry.label}
-                  </span>
-                  <span className="text-xs tabular-nums text-ink-muted">
-                    {clock(entry.at, TIME_ZONE)}
-                  </span>
-                </div>
-                <p className="text-sm text-ink">{entry.value}</p>
-              </div>
             </div>
           ))}
         </div>
