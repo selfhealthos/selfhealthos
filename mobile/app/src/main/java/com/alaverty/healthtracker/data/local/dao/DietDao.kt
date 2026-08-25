@@ -28,6 +28,31 @@ interface DietDao {
     suspend fun markSynced(ids: List<String>)
 
     /**
+     * Rows with a local photo the portal has not been sent. `isSynced = 1`
+     * because the row has to exist server-side - keyed by this same id -
+     * before a photo can attach to it; a photo queued ahead of its own row
+     * would only ever get "entry not synced yet" back.
+     */
+    @Query(
+        """SELECT * FROM diet_entries
+           WHERE isSynced = 1 AND deletedAt IS NULL
+             AND photoPath IS NOT NULL AND photoPath != ''
+             AND photoSynced = 0"""
+    )
+    suspend fun getPendingPhotoUploads(): List<DietEntry>
+
+    @Query(
+        """SELECT COUNT(*) FROM diet_entries
+           WHERE isSynced = 1 AND deletedAt IS NULL
+             AND photoPath IS NOT NULL AND photoPath != ''
+             AND photoSynced = 0"""
+    )
+    fun countPendingPhotoUploads(): Flow<Int>
+
+    @Query("UPDATE diet_entries SET photoSynced = 1 WHERE id = :id")
+    suspend fun markPhotoSynced(id: String)
+
+    /**
      * Tombstone rather than remove.
      *
      * Clearing `isSynced` is what puts the row back in the queue: without it,

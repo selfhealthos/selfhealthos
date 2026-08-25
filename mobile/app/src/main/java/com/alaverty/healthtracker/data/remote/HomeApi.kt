@@ -1,8 +1,12 @@
 package com.alaverty.healthtracker.data.remote
 
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 
 /**
  * The home portal's REST surface, as far as this app uses it.
@@ -44,4 +48,20 @@ interface HomeApi {
      */
     @POST("api/v1/health/sync/entries")
     suspend fun syncEntries(@Body body: EntrySyncRequest): Response<EntrySyncResponse>
+
+    /**
+     * Attach one photo to a row [syncEntries] has already stored.
+     *
+     * Multipart, not JSON, because the body is raw image bytes. One file per
+     * request for the same reason: multipart bodies do not batch the way JSON
+     * rows do, and a phone with several pending photos already sends them one
+     * at a time - see [com.alaverty.healthtracker.sync.PhotoSyncManager].
+     */
+    @Multipart
+    @POST("api/v1/health/sync/photo")
+    suspend fun syncPhoto(
+        @Part("kind") kind: RequestBody,
+        @Part("id") id: RequestBody,
+        @Part file: MultipartBody.Part
+    ): Response<PhotoSyncResponse>
 }

@@ -30,6 +30,24 @@ interface DocDao {
     @Query("UPDATE doc_entries SET isSynced = 1 WHERE id IN (:ids)")
     suspend fun markSynced(ids: List<String>)
 
+    /** See `DietDao.getPendingPhotoUploads` - same reason, same ordering. */
+    @Query(
+        """SELECT * FROM doc_entries
+           WHERE isSynced = 1 AND deletedAt IS NULL
+             AND photoPath != '' AND photoSynced = 0"""
+    )
+    suspend fun getPendingPhotoUploads(): List<DocEntry>
+
+    @Query(
+        """SELECT COUNT(*) FROM doc_entries
+           WHERE isSynced = 1 AND deletedAt IS NULL
+             AND photoPath != '' AND photoSynced = 0"""
+    )
+    fun countPendingPhotoUploads(): Flow<Int>
+
+    @Query("UPDATE doc_entries SET photoSynced = 1 WHERE id = :id")
+    suspend fun markPhotoSynced(id: String)
+
     /**
      * Tombstone rather than remove.
      *

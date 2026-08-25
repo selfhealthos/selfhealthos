@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 from statistics import fmean
@@ -793,6 +794,7 @@ def diet_log(user, *, days: int = 30, search: str | None = None) -> dict:
             "at": e.occurred_at,
             "local_date": e.local_date,
             "flags": foodflags.flags_for(e.name),
+            "image_url": e.photo.url if e.photo else None,
         }
         for e in rows.order_by("-occurred_at")[:DIET_LOG_LIMIT]
     ]
@@ -2464,3 +2466,43 @@ def ingest_entries(user, payload: dict) -> dict:
             batch.rejected[:5],
         )
     return batch.as_dict()
+
+
+#: Which entry types carry a photo, and the model that holds it. Both share the
+#: same shape - `client_id` for identity, a `photo` `ImageField` to fill in -
+#: so one function serves them rather than a `_diet_photo`/`_doc_photo` pair.
+_PHOTO_MODELS = {"diet": DietEntry, "docs": Doc}
+
+
+def attach_entry_photo(user, *, kind: str, client_id: str, file) -> dict:
+    """Save a photo the phone captured for an already-synced diet or doc row.
+
+    A separate endpoint from `/sync/gym` and `/sync/entries` because a photo is
+    a multipart body, not JSON, and does not batch the way rows do - a phone
+    with three pending photos already sends three requests, one per file.
+
+    The row must already exist: `ingest_entries` is what creates it, from the
+    same client-generated `client_id` the phone used when it saved the entry
+    offline, and photo upload only ever follows that, never replaces it. A
+    photo for a `client_id` this account has never synced is named as "not
+    found" rather than silently dropped, so the phone knows to retry once the
+    entry itself has gone up - not to give up on the photo forever.
+    """
+    model = _PHOTO_MODELS.get(kind)
+    if model is None:
+        return {"stored": False, "reason": f"unknown entry type {kind!r}"}
+
+    try:
+        parsed_id = uuid.UUID(str(client_id))
+    except (TypeError, ValueError):
+        return {"stored": False, "reason": "invalid id"}
+
+    entry = model.objects.filter(
+        client_id=parsed_id, created_by=user, deleted_at__isnull=True
+    ).first()
+    if entry is None:
+        return {"stored": False, "reason": "entry not synced yet"}
+
+    entry.photo = file
+    entry.save(update_fields=["photo"])
+    return {"stored": True, "reason": None}

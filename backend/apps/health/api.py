@@ -14,7 +14,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from django.conf import settings
-from ninja import Router, Status
+from ninja import File, Form, Router, Status
+from ninja.files import UploadedFile
 
 from apps.tokens.auth import require_scope
 
@@ -53,6 +54,7 @@ from .schemas import (
     HealthOfficeDayOut,
     HealthOfficeOut,
     HealthOfficeReportOut,
+    HealthPhotoSyncOut,
     HealthSleepHistoryOut,
     HealthSummaryOut,
     HealthSyncQueued,
@@ -694,3 +696,29 @@ def sync_entries(request, payload: HealthEntrySyncIn):
     require_scope(request, "health:write")
     result = services.ingest_entries(request.auth, payload.dict())
     return HealthSyncResultOut(**result)
+
+
+@router.post(
+    "/sync/photo",
+    response=HealthPhotoSyncOut,
+    summary="Attach a photo to an already-synced diet or doc entry",
+    operation_id="syncEntryPhoto",
+)
+def sync_photo(
+    request,
+    kind: str = Form(...),
+    id: str = Form(...),
+    file: UploadedFile = File(...),
+):
+    """One file per request - multipart bodies don't batch the way the JSON
+    sync endpoints do, and the phone already sends its pending photos one at a
+    time.
+
+    `id` must already exist: it names the `client_id` of a row `/sync/entries`
+    has stored, and this call only ever fills in that row's photo, never
+    creates one. Uploading before the entry itself has synced is a named
+    "not synced yet" rather than a 404 - the phone should retry, not give up.
+    """
+    require_scope(request, "health:write")
+    result = services.attach_entry_photo(request.auth, kind=kind, client_id=id, file=file)
+    return HealthPhotoSyncOut(**result)

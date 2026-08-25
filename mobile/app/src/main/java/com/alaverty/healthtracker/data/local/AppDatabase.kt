@@ -12,7 +12,7 @@ import com.alaverty.healthtracker.data.local.entity.*
         BpEntry::class, WeightEntry::class, Habit::class, HabitCompletion::class, DocEntry::class,
         WfhEntry::class, GymExercise::class, GymSet::class, LabResult::class,
         BodyMeasurement::class, FitnessTest::class, AlarmEntry::class],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -34,6 +34,29 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun alarmDao(): AlarmDao
 
     companion object {
+        /**
+         * Photo upload for diet and doc entries.
+         *
+         * `isSynced` says the row's fields have reached the portal; it says
+         * nothing about the photo, which travels separately over
+         * `/sync/photo` once the row exists there to attach it to. Existing
+         * rows with a photo default to `photoSynced = 0` for the same reason
+         * every other migration here defaults new sync columns to unsynced:
+         * a picture already on this phone that the portal has never seen
+         * must be offered, not skipped because the row it belongs to happens
+         * to predate this column.
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE diet_entries ADD COLUMN photoSynced INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE doc_entries ADD COLUMN photoSynced INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         /**
          * Portal sync for every remaining entry type.
          *

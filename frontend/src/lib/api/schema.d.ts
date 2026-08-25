@@ -1040,6 +1040,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/sync/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a photo to an already-synced diet or doc entry
+         * @description One file per request - multipart bodies don't batch the way the JSON
+         *     sync endpoints do, and the phone already sends its pending photos one at a
+         *     time.
+         *
+         *     `id` must already exist: it names the `client_id` of a row `/sync/entries`
+         *     has stored, and this call only ever fills in that row's photo, never
+         *     creates one. Uploading before the entry itself has synced is a named
+         *     "not synced yet" rather than a 404 - the phone should retry, not give up.
+         */
+        post: operations["syncEntryPhoto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fitness/playlists": {
         parameters: {
             query?: never;
@@ -2029,6 +2056,8 @@ export interface components {
              * @default []
              */
             flags: string[];
+            /** Image Url */
+            image_url?: string | null;
         };
         /** HealthDietLogOut */
         HealthDietLogOut: {
@@ -3705,6 +3734,19 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /**
+         * HealthPhotoSyncOut
+         * @description One file, one reply - unlike the batch endpoints, a photo upload is
+         *     never worth grouping: multipart bodies do not compose the way JSON rows
+         *     do, and a phone with several pending photos already retries them one at a
+         *     time.
+         */
+        HealthPhotoSyncOut: {
+            /** Stored */
+            stored: boolean;
+            /** Reason */
+            reason?: string | null;
+        };
         /** FitnessPlaylistOut */
         FitnessPlaylistOut: {
             /** Key */
@@ -5189,6 +5231,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthSyncResultOut"];
+                };
+            };
+        };
+    };
+    syncEntryPhoto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Kind */
+                    kind: string;
+                    /** Id */
+                    id: string;
+                    /**
+                     * File
+                     * Format: binary
+                     */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthPhotoSyncOut"];
                 };
             };
         };
