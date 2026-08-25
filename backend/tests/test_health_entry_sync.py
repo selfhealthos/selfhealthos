@@ -186,7 +186,9 @@ class TestPerRowOutcomes:
         body = response.json()
 
         assert response.status_code == 200
-        assert body["accepted"] == [first["id"], weight["id"]]
+        # Order-independent: SPECS processes weight before office_days, and
+        # that ordering is an implementation detail, not a contract.
+        assert set(body["accepted"]) == {first["id"], weight["id"]}
         assert body["rejected"] == [
             {"id": second["id"], "reason": "conflicts with an existing record"}
         ]
