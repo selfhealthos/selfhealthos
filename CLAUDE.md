@@ -8,9 +8,18 @@ Guidance for Claude Code (and future contributors) working in this repo.
 backend/    Django + django-ninja REST API, Celery workers, MCP server
 frontend/   Next.js (App Router) UI
 compose.yaml / compose.dev.yaml   Docker Compose, prod base + dev overlay
+compose.proxy.yaml / compose.tls.yaml   opt-in ingress overlays (see below)
+deploy/tls/Caddyfile              config for compose.tls.yaml's terminator
 ```
 
-There is no bundled reverse proxy. The compose stack serves plain HTTP by default; an operator who wants public HTTPS fronts it with their own (Traefik, nginx, a tunnel) — see the docs site's self-hosting guide. This is also why the MCP endpoint works over plain `http://` out of the box: nothing here requires TLS.
+There is no bundled reverse proxy, and neither image speaks TLS — `next` serves plain HTTP on 3000, django on 8000. The stack serves plain HTTP by default, which is also why the MCP endpoint works over plain `http://` out of the box: nothing here requires TLS.
+
+Two opt-in overlays cover the cases where that isn't enough. Both are inert unless `COMPOSE_FILE` names them, and they are **mutually exclusive** — each wants `:443`:
+
+- **`compose.proxy.yaml`** — you already run Traefik/nginx/Caddy. Joins `next` to your proxy's existing network so it can reach the container directly. Point the proxy at `selfhealthos-next-1:3000`, the *container* name.
+- **`compose.tls.yaml`** — you don't run a proxy but need HTTPS anyway, typically a phone on the LAN posting a `shos_pat_` bearer token that must not cross the wifi in the clear. Adds one `caddy:2-alpine` container holding an operator-supplied cert, forwarding to `next:3000`. No ACME: the cert is given, not issued, which also stops Caddy trying to get one for a name no public CA can sign.
+
+`TLS_SNI` in that overlay is load-bearing, not tuning. A client reaching the box by IP sends **no SNI** — that field carries a hostname, never an address — so without a named fallback the handshake aborts before any routing happens. Separately, the cert must carry the IP in its SANs or the client refuses what it's served. An IP that isn't in `subjectAltName` fails in a way that reads like a proxy bug and is not one.
 
 `backend/apps/health/` is the core domain app — Health is the product, not one feature among several. Everything else (`accounts`, `tokens`, `core`, `api`) exists to support it.
 
