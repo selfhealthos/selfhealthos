@@ -81,8 +81,21 @@ def merge(
     client_updated_at=None,
     defaults: dict | None = None,
     deleted: bool = False,
+    natural_key: dict | None = None,
 ) -> Outcome:
-    """Store one device row, idempotently. Returns what happened to it."""
+    """Store one device row, idempotently. Returns what happened to it.
+
+    `natural_key` is for models with a uniqueness rule beyond `client_id` -
+    `OfficeDay` is one row per day, for instance (see the module docstring on
+    `_write`). A phone that tombstones a row and mints a fresh id for the same
+    natural key - toggling a day off and back on before the delete has synced
+    is exactly this - would otherwise collide forever: the old row keeps
+    occupying the slot, the new id never matches it by `client_id`, and every
+    retry fails the same `IntegrityError`. When a `client_id` lookup finds
+    nothing, falling back to the natural key adopts that row instead of
+    fighting it, and the same `client_updated_at` tie-break decides whether
+    the incoming write actually changes anything.
+    """
     if not client_id:
         raise Rejected("missing client id")
 
@@ -99,6 +112,9 @@ def merge(
         # entry. There is no second row this could become - the constraint
         # forbids it - so the only honest answer is to refuse this one.
         raise Rejected("client id belongs to another account")
+
+    if existing is None and natural_key:
+        existing = model.objects.filter(created_by=user, **natural_key).first()
 
     if existing is None:
         if deleted:
@@ -129,12 +145,19 @@ def merge(
         # retry".
         if existing.deleted_at is None:
             existing.deleted_at = timezone.now()
+        existing.client_id = client_id
         existing.client_updated_at = client_updated_at
         existing.save()
         return Outcome.DELETED
 
     for key, value in defaults.items():
         setattr(existing, key, value)
+    # Only ever moves when `existing` was adopted via `natural_key` above - a
+    # match found by `client_id` already has this value. The adopted row's
+    # identity has to move to the id the phone is now using, or the next sync
+    # of the same id looks like a brand new row and reopens the same natural
+    # key collision this fallback exists to close.
+    existing.client_id = client_id
     existing.client_updated_at = client_updated_at
     # An edit newer than the delete wins. That is the same last-write-wins rule
     # the timestamps already encode, applied to the tombstone rather than to a

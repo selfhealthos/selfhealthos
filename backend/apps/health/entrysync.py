@@ -93,6 +93,12 @@ class _Spec:
     rollup: bool = False
     #: Fields copied straight across with no transform.
     extra: dict = field(default_factory=dict)
+    #: True for a type with a uniqueness rule beyond `client_id` - one row per
+    #: `date_field` per person. Passed to `devicesync.merge` as `natural_key`
+    #: so a row re-created under a new id after its old id's delete never made
+    #: it to the server (toggle off, toggle back on, before syncing) adopts
+    #: the existing row instead of colliding with it forever.
+    unique_per_day: bool = False
 
 
 SPECS: tuple[_Spec, ...] = (
@@ -202,6 +208,7 @@ SPECS: tuple[_Spec, ...] = (
         occurred=False,
         date_field="local_date",
         date_source="date",
+        unique_per_day=True,
         build=lambda row: {},
     ),
     _Spec(
@@ -305,6 +312,8 @@ def ingest(user, payload: dict, batch) -> set[date]:
                 batch.reject(client_id, exc.reason)
                 continue
 
+            natural_key = {spec.date_field: day} if spec.unique_per_day and day else None
+
             # `_Batch.record` calls its merge function positionally, so the
             # keyword-heavy `devicesync.merge` is wrapped rather than passed.
             stored = batch.record(
@@ -315,6 +324,7 @@ def ingest(user, payload: dict, batch) -> set[date]:
                 client_id,
                 row,
                 defaults,
+                natural_key,
             )
 
             if stored and spec.rollup and day is not None:
@@ -324,7 +334,7 @@ def ingest(user, payload: dict, batch) -> set[date]:
     return touched
 
 
-def _merge_one(model, user, client_id: str, row: dict, defaults: dict):
+def _merge_one(model, user, client_id: str, row: dict, defaults: dict, natural_key: dict | None):
     return devicesync.merge(
         model,
         user=user,
@@ -332,6 +342,7 @@ def _merge_one(model, user, client_id: str, row: dict, defaults: dict):
         client_updated_at=timeutils.utc_from_epoch_ms(row.get("updated_at")),
         deleted=bool(row.get("deleted")),
         defaults=defaults,
+        natural_key=natural_key,
     )
 
 
