@@ -2,7 +2,6 @@ package com.alaverty.healthtracker.ui.wfh
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.alaverty.healthtracker.data.local.entity.WfhEntry
 import com.alaverty.healthtracker.data.repository.HealthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,7 +42,7 @@ class WfhViewModel @Inject constructor(
             if (dateStr in officeDays.value) {
                 repository.deleteWfhEntryByDate(dateStr)
             } else {
-                repository.insertWfhEntry(WfhEntry(date = dateStr))
+                repository.markWfhDayPresent(dateStr)
             }
         }
     }

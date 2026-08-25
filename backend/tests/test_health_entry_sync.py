@@ -171,28 +171,29 @@ class TestPerRowOutcomes:
         rejected_ids = {r["id"] for r in body["rejected"]}
         assert rejected_ids.isdisjoint(set(body["accepted"]))
 
-    def test_two_office_days_for_the_same_date_reject_the_second_not_the_batch(
-        self, post, phone_user
-    ):
-        """OfficeDay is one row per day. A second phone row for a date already
-        taken must be a named rejection, not a 500 that strands everything
-        else in the same batch — including unrelated types sent alongside it.
+    def test_two_office_days_for_the_same_date_merge_into_one_row(self, post, phone_user):
+        """OfficeDay is one row per day. A second phone row naming a date
+        already taken must adopt the existing row rather than be rejected —
+        that collision is exactly what a toggle-off/toggle-on before the
+        delete has synced produces (see `HealthRepository.markWfhDayPresent`
+        on the phone), and no retry of a plain rejection can ever fix it: the
+        new id never becomes a match for the old one. `client_updated_at`
+        still decides which write wins, same as any other merge.
         """
         first = row(date="2026-08-06")
-        second = row(date="2026-08-06")
+        second = row(date="2026-08-06", updated_at=NOW_MS + 1000)
         weight = row(timestamp=NOW_MS, weight_kg=80.0)
 
         response = post({"office_days": [first, second], "weight": [weight]})
         body = response.json()
 
         assert response.status_code == 200
-        # Order-independent: SPECS processes weight before office_days, and
-        # that ordering is an implementation detail, not a contract.
-        assert set(body["accepted"]) == {first["id"], weight["id"]}
-        assert body["rejected"] == [
-            {"id": second["id"], "reason": "conflicts with an existing record"}
-        ]
+        assert set(body["accepted"]) == {first["id"], second["id"], weight["id"]}
+        assert body["rejected"] == []
         assert OfficeDay.objects.filter(created_by=phone_user).count() == 1
+        # The surviving row carries the newer id — the phone will only ever
+        # resend `second`, so the server's identity for this day has to track it.
+        assert str(OfficeDay.objects.get(created_by=phone_user).client_id) == second["id"]
         assert WeightEntry.objects.filter(created_by=phone_user).count() == 1
 
     def test_an_unknown_type_is_ignored_not_fatal(self, post, phone_user):
@@ -234,6 +235,32 @@ class TestReplaySafety:
 
         assert body["unchanged"] == 1
         assert WeightEntry.objects.get(created_by=phone_user).weight_kg == 79.2
+
+    def test_a_new_id_for_an_already_synced_office_day_adopts_it(self, post, phone_user):
+        """Reproduces the bug this fix closes: a day synced once under id A,
+        then toggled off and back on locally before the delete ever reached
+        the server — Room's `insert` REPLACEs by date, so the phone forgets A
+        entirely and only ever sends a fresh id B for the same date. Without
+        adoption by natural key, B collides with A forever: every retry names
+        the same "conflicts with an existing record" rejection, since B can
+        never equal A.
+        """
+        original = row(date="2026-08-06")
+        post({"office_days": [original]})
+
+        recreated = row(date="2026-08-06", updated_at=NOW_MS + 60_000)
+        body = post({"office_days": [recreated]}).json()
+
+        assert body["rejected"] == []
+        assert body["accepted"] == [recreated["id"]]
+        assert OfficeDay.objects.filter(created_by=phone_user).count() == 1
+        assert str(OfficeDay.objects.get(created_by=phone_user).client_id) == recreated["id"]
+
+        # Idempotent: retrying the same request (a lost reply, or the phone's
+        # hourly sweep before it has purged anything) must not re-reject B.
+        replay = post({"office_days": [recreated]}).json()
+        assert replay["rejected"] == []
+        assert replay["accepted"] == [recreated["id"]]
 
 
 class TestDeletes:

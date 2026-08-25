@@ -257,7 +257,22 @@ class HealthRepository @Inject constructor(
         return wfhDao.getEntriesForRange(startDate.format(fmt), endDate.format(fmt))
     }
     suspend fun getAllWfhEntriesSnapshot(): List<WfhEntry> = wfhDao.getAllSnapshot()
-    suspend fun insertWfhEntry(entry: WfhEntry) = wfhDao.insert(entry).also { syncSoon() }
+    /**
+     * Mark a day as WFH, reusing that date's existing row (tombstoned or not)
+     * rather than always minting a fresh id.
+     *
+     * `insertWfhEntry` REPLACEs by date, so toggling a day off then back on
+     * before the delete syncs would swap in a new id and lose the pending
+     * tombstone - the portal's old row for that day is still live under the
+     * old id, and its one-row-per-day constraint rejects the new one forever
+     * since the two never share a `client_id`. Reusing the id turns the re-add
+     * into an edit of the row the portal already has.
+     */
+    suspend fun markWfhDayPresent(date: String) {
+        if (wfhDao.findByDate(date) != null) wfhDao.restore(date, now())
+        else wfhDao.insert(WfhEntry(date = date))
+        syncSoon()
+    }
     suspend fun deleteWfhEntryByDate(date: String) = wfhDao.softDeleteByDate(date, now()).also { syncSoon() }
     suspend fun getUnsyncedWfhEntries() = wfhDao.getUnsynced()
     suspend fun markWfhEntriesSynced(ids: List<String>) = wfhDao.markSynced(ids)

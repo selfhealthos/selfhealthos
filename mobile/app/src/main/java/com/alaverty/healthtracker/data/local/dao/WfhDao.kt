@@ -18,6 +18,29 @@ interface WfhDao {
     @Query("SELECT * FROM wfh_entries WHERE isSynced = 0")
     suspend fun getUnsynced(): List<WfhEntry>
 
+    /**
+     * The row for this date, tombstoned or not. Used before adding a day back
+     * so a re-add can revive the existing id instead of minting a new one -
+     * see the comment on [restore].
+     */
+    @Query("SELECT * FROM wfh_entries WHERE date = :date LIMIT 1")
+    suspend fun findByDate(date: String): WfhEntry?
+
+    /**
+     * Un-tombstone the existing row for a re-added day, keeping its id.
+     *
+     * `insert` REPLACEs by the unique `date` index, which is exactly wrong
+     * here: toggling a day off then back on before the delete has synced
+     * would REPLACE the tombstoned row with a brand new id, silently dropping
+     * the pending delete and leaving the server's old row (still live under
+     * the old id) permanently blocking the new one - the unique-per-day
+     * constraint there has no way to tell they are the same day. Reusing the
+     * id makes the re-add just another edit to the row the server already
+     * knows about.
+     */
+    @Query("UPDATE wfh_entries SET deletedAt = NULL, updatedAt = :at, isSynced = 0 WHERE date = :date")
+    suspend fun restore(date: String, at: Long)
+
     @Query("SELECT COUNT(*) FROM wfh_entries WHERE isSynced = 0")
     fun countUnsynced(): Flow<Int>
 

@@ -333,7 +333,11 @@ private fun HomePortalSection(
             Text(statusText, style = MaterialTheme.typography.bodyMedium, color = statusColor)
             Text(
                 if (pending == 0) "Nothing waiting to sync."
-                else "$pending gym ${if (pending == 1) "entry" else "entries"} waiting to sync.",
+                // `pending` is gym sets + gym exercises + every other entry
+                // type combined (see SettingsViewModel.pendingGymCount) - not
+                // gym alone, so the label must not say "gym" or a backlog of
+                // ordinary entries reads as a gym-sync problem.
+                else "$pending ${if (pending == 1) "entry" else "entries"} waiting to sync.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -430,7 +434,7 @@ private fun statusLine(
     token.rejected ->
         "Credential rejected — re-enrol below" to MaterialTheme.colorScheme.error
     !token.enrolled ->
-        "Not enrolled — gym entries are saving locally only" to MaterialTheme.colorScheme.error
+        "Not enrolled — entries are saving locally only" to MaterialTheme.colorScheme.error
     else -> when (status) {
         is GymSyncStatus.Syncing -> "Syncing…" to MaterialTheme.colorScheme.primary
         is GymSyncStatus.UpToDate ->
