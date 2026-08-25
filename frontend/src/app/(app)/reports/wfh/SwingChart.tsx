@@ -1,53 +1,37 @@
 import type { HealthOfficeReportMetric } from "@/lib/api/types";
 
+import { ticks, tickLabel } from "../../charts";
+
 /**
- * Biggest swings: a compact grouped bar per metric, WFH/office/weekend side
- * by side.
- *
- * Bars are baseline-anchored at zero on purpose rather than scaled to the
- * three values' own range - a truncated axis is the standard way a bar chart
- * exaggerates a difference, and the swing badge already states the relative
- * difference precisely, so the bars themselves stay honest.
- *
- * Colour is fixed per bucket across every row on the page - WFH, office and
- * weekend mean the same colour whichever metric you're looking at.
+ * One card per metric: a title, an "avg" badge, a small chart, and a footer
+ * naming which day type came out best (and worst, when there's a worse one
+ * worth naming). Colour is fixed per bucket across every card on the page -
+ * WFH, office and weekend mean the same colour whichever metric you're
+ * looking at, matching the *fitcypher* dashboard this layout is drawn from.
  */
 
 export const BUCKETS: ReadonlyArray<{ key: "wfh" | "office" | "weekend"; label: string; colour: string }> = [
-  { key: "wfh", label: "WFH", colour: "var(--viz-1)" },
-  { key: "office", label: "Office", colour: "var(--viz-2)" },
-  { key: "weekend", label: "Weekend", colour: "var(--viz-6)" },
+  { key: "wfh", label: "WFH", colour: "var(--viz-2)" },
+  { key: "office", label: "Office", colour: "var(--viz-3)" },
+  // Weekend deliberately isn't a "real" colour slot - it's the day type this
+  // report doesn't have an opinion about, so it gets the neutral grey already
+  // used elsewhere for "not the point of the chart" rather than a third hue.
+  { key: "weekend", label: "Weekend", colour: "var(--viz-stage-awake)" },
 ];
-
-export function DayTypeLegend() {
-  return (
-    <ul className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-ink-dim">
-      {BUCKETS.map((bucket) => (
-        <li key={bucket.key} className="flex items-center gap-1.5">
-          <span
-            aria-hidden
-            className="inline-block size-2.5 rounded-full"
-            style={{ backgroundColor: bucket.colour }}
-          />
-          {bucket.label}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 export function fmtMetricValue(value: number, unit: string): string {
   const rounded = Math.abs(value) >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded.toLocaleString()}${unit ? ` ${unit}` : ""}`;
 }
 
-/** The bucket a metric's own `direction` calls best, or null when it has none. */
-export function bestBucket(
+type BucketKey = (typeof BUCKETS)[number]["key"];
+
+function rankedBucket(
   metric: Pick<HealthOfficeReportMetric, "direction" | "wfh" | "office" | "weekend">,
-): "wfh" | "office" | "weekend" | null {
+  better: (a: number, b: number) => boolean,
+): BucketKey | null {
   if (!metric.direction) return null;
-  const better = metric.direction === "up" ? (a: number, b: number) => a > b : (a: number, b: number) => a < b;
-  return BUCKETS.reduce<{ key: "wfh" | "office" | "weekend"; value: number } | null>((best, bucket) => {
+  return BUCKETS.reduce<{ key: BucketKey; value: number } | null>((best, bucket) => {
     const value = metric[bucket.key];
     if (value === null || value === undefined) return best;
     if (!best || better(value, best.value)) return { key: bucket.key, value };
@@ -55,50 +39,241 @@ export function bestBucket(
   }, null)?.key ?? null;
 }
 
-export function SwingRow({ metric }: { metric: HealthOfficeReportMetric }) {
-  const values = BUCKETS.map((bucket) => metric[bucket.key]).filter(
-    (value): value is number => value !== null && value !== undefined,
+/** The bucket a metric's own `direction` calls best, or null when it has none. */
+export function bestBucket(
+  metric: Pick<HealthOfficeReportMetric, "direction" | "wfh" | "office" | "weekend">,
+): BucketKey | null {
+  return rankedBucket(metric, metric.direction === "up" ? (a, b) => a > b : (a, b) => a < b);
+}
+
+/** The mirror of `bestBucket` - the one the metric's direction calls worst. */
+export function worstBucket(
+  metric: Pick<HealthOfficeReportMetric, "direction" | "wfh" | "office" | "weekend">,
+): BucketKey | null {
+  return rankedBucket(metric, metric.direction === "up" ? (a, b) => a < b : (a, b) => a > b);
+}
+
+function average(metric: HealthOfficeReportMetric): number | null {
+  const values = BUCKETS.map((b) => metric[b.key]).filter(
+    (v): v is number => v !== null && v !== undefined,
   );
-  const max = Math.max(...values, 0.0001);
-  const best = bestBucket(metric);
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function totalDays(metric: HealthOfficeReportMetric): number {
+  return metric.wfh_days + metric.office_days + metric.weekend_days;
+}
+
+// One small SVG per card rather than the wide, axis-heavy charts elsewhere on
+// the site (see `../../charts.tsx`) - these sit three-plus to a row, so every
+// pixel of chrome competes with the next card's.
+const W = 200;
+const H = 108;
+const PAD_TOP = 14;
+const PAD_BOTTOM = 20;
+const PAD_SIDE = 26;
+const PLOT_H = H - PAD_TOP - PAD_BOTTOM;
+
+function slotX(index: number): number {
+  const usable = W - PAD_SIDE * 2;
+  return PAD_SIDE + (usable / (BUCKETS.length - 1)) * index;
+}
+
+function presentPoints(metric: HealthOfficeReportMetric) {
+  return BUCKETS.map((bucket, index) => ({ bucket, x: slotX(index), value: metric[bucket.key] })).filter(
+    (p): p is { bucket: (typeof BUCKETS)[number]; x: number; value: number } =>
+      p.value !== null && p.value !== undefined,
+  );
+}
+
+function CategoryLabels() {
+  return (
+    <>
+      {BUCKETS.map((bucket, index) => (
+        <text
+          key={bucket.key}
+          x={slotX(index)}
+          y={H - 4}
+          textAnchor="middle"
+          fontSize={9}
+          fill="var(--viz-muted)"
+        >
+          {bucket.label}
+        </text>
+      ))}
+    </>
+  );
+}
+
+/**
+ * A scatter of one dot per bucket, scaled to the buckets' own min/max rather
+ * than to zero.
+ *
+ * Used when the buckets are close together relative to their scale - a
+ * baseline-anchored bar chart would draw three nearly-identical columns and
+ * hide the very difference the card exists to show. `swing_pct` already
+ * measures exactly this (see `office_report`), so the same number that ranks
+ * "biggest swings" also decides which chart a metric gets.
+ */
+function MetricDots({ metric }: { metric: HealthOfficeReportMetric }) {
+  const points = presentPoints(metric);
+  if (points.length === 0) return null;
+
+  const values = points.map((p) => p.value);
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  // A flat line (every bucket equal) has no span to divide by - treat it as a
+  // tiny one centred on the value rather than crashing or collapsing to a point.
+  const span = max - min || Math.max(Math.abs(max), 1) * 0.1;
+  const y = (v: number) => PAD_TOP + PLOT_H - ((v - min) / span) * PLOT_H;
 
   return (
-    <div className="py-2.5">
-      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <p className="text-sm font-medium text-ink">{metric.label}</p>
-        {metric.swing_pct !== null && metric.swing_pct !== undefined && (
-          <p className="text-xs text-ink-muted" title="Spread across buckets, as a share of their overall mean">
-            ±{Math.round(metric.swing_pct)}%
-          </p>
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-auto w-full"
+      role="img"
+      aria-label={`${metric.label} by day type, ${points
+        .map((p) => `${p.bucket.label} ${fmtMetricValue(p.value, metric.unit)}`)
+        .join(", ")}`}
+    >
+      {[max, min].map((tick) => (
+        <g key={tick}>
+          <line
+            x1={PAD_SIDE}
+            x2={W - PAD_SIDE}
+            y1={y(tick)}
+            y2={y(tick)}
+            stroke="var(--viz-grid)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          <text
+            x={PAD_SIDE - 6}
+            y={y(tick)}
+            textAnchor="end"
+            dominantBaseline="middle"
+            fontSize={9}
+            fill="var(--viz-muted)"
+          >
+            {tickLabel(tick)}
+          </text>
+        </g>
+      ))}
+      {points.map((p) => (
+        <circle key={p.bucket.key} cx={p.x} cy={y(p.value)} r={5} fill={p.bucket.colour}>
+          <title>{`${p.bucket.label}: ${fmtMetricValue(p.value, metric.unit)}`}</title>
+        </circle>
+      ))}
+      <CategoryLabels />
+    </svg>
+  );
+}
+
+/**
+ * A baseline-anchored bar per bucket - the honest default whenever the
+ * buckets differ by enough that zero is a fair place to start from.
+ */
+function MetricBars({ metric }: { metric: HealthOfficeReportMetric }) {
+  const points = presentPoints(metric);
+  if (points.length === 0) return null;
+
+  const rawMax = Math.max(...points.map((p) => p.value), 0.0001);
+  const axisTicks = ticks(0, rawMax, 3);
+  const max = axisTicks[axisTicks.length - 1] ?? rawMax;
+  const y0 = H - PAD_BOTTOM;
+  const barY = (v: number) => y0 - (v / max) * PLOT_H;
+  const barWidth = 26;
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-auto w-full"
+      role="img"
+      aria-label={`${metric.label} by day type, ${points
+        .map((p) => `${p.bucket.label} ${fmtMetricValue(p.value, metric.unit)}`)
+        .join(", ")}`}
+    >
+      <line
+        x1={PAD_SIDE}
+        x2={W - PAD_SIDE}
+        y1={y0}
+        y2={y0}
+        stroke="var(--viz-grid)"
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+      />
+      <text x={PAD_SIDE - 6} y={PAD_TOP} textAnchor="end" dominantBaseline="hanging" fontSize={9} fill="var(--viz-muted)">
+        {tickLabel(max)}
+      </text>
+      <text x={PAD_SIDE - 6} y={y0} textAnchor="end" dominantBaseline="middle" fontSize={9} fill="var(--viz-muted)">
+        0
+      </text>
+      {points.map((p) => (
+        <rect
+          key={p.bucket.key}
+          x={p.x - barWidth / 2}
+          y={barY(p.value)}
+          width={barWidth}
+          height={Math.max(0, y0 - barY(p.value))}
+          rx={3}
+          fill={p.bucket.colour}
+        >
+          <title>{`${p.bucket.label}: ${fmtMetricValue(p.value, metric.unit)}`}</title>
+        </rect>
+      ))}
+      <CategoryLabels />
+    </svg>
+  );
+}
+
+//: Below this, a 0-based bar chart would draw three columns close enough in
+//: height to look identical - the buckets differ, but not on a scale zero
+//: has anything to say about. Above it, the columns' own heights carry the
+//: comparison better than a zoomed axis would.
+const DOT_CHART_SWING_THRESHOLD = 20;
+
+export function MetricCard({ metric }: { metric: HealthOfficeReportMetric }) {
+  const avg = average(metric);
+  const days = totalDays(metric);
+  const best = bestBucket(metric);
+  const worst = worstBucket(metric);
+  const useDots = metric.swing_pct !== null && metric.swing_pct !== undefined
+    && metric.swing_pct < DOT_CHART_SWING_THRESHOLD;
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="mb-0.5 flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold text-ink">{metric.label}</h3>
+        {avg !== null && (
+          <span className="shrink-0 text-xs text-ink-muted">avg {fmtMetricValue(avg, metric.unit)}</span>
         )}
       </div>
-      <div className="space-y-1">
-        {BUCKETS.map((bucket) => {
-          const value = metric[bucket.key];
-          if (value === null || value === undefined) return null;
-          const width = Math.max(4, (value / max) * 100);
-          const isBest = best === bucket.key;
-          return (
-            <div key={bucket.key} className="flex items-center gap-2">
-              <span className="w-14 shrink-0 text-xs text-ink-dim">{bucket.label}</span>
-              <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-surface-2">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${width}%`, backgroundColor: bucket.colour }}
-                  title={`${bucket.label}: ${fmtMetricValue(value, metric.unit)}`}
-                />
-              </div>
-              <span
-                className={`w-20 shrink-0 text-right text-xs tabular-nums ${
-                  isBest ? "font-semibold text-ink" : "text-ink-dim"
-                }`}
-              >
-                {fmtMetricValue(value, metric.unit)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+      <p className="mb-2 text-xs text-ink-muted">
+        {days.toLocaleString()} day{days === 1 ? "" : "s"}
+      </p>
+
+      {useDots ? <MetricDots metric={metric} /> : <MetricBars metric={metric} />}
+
+      <p className="mt-1 text-xs">
+        {best ? (
+          <>
+            <span className="text-emerald-600 dark:text-emerald-400">
+              ▲ {BUCKETS.find((b) => b.key === best)!.label} best
+            </span>
+            {worst && worst !== best && (
+              <>
+                {" · "}
+                <span className="text-amber-600 dark:text-amber-400">
+                  ▼ {BUCKETS.find((b) => b.key === worst)!.label} worst
+                </span>
+              </>
+            )}
+          </>
+        ) : (
+          <span className="text-ink-muted">not ranked — no better direction for this one</span>
+        )}
+      </p>
     </div>
   );
 }

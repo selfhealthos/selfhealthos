@@ -4,7 +4,7 @@ import { serverGet } from "@/lib/api/server";
 import type { HealthOfficeReport } from "@/lib/api/types";
 
 import { Card, Empty, PageHeader, RangeTabs, shortDate, Stat } from "../../ui";
-import { BUCKETS, bestBucket, DayTypeLegend, fmtMetricValue, SwingRow } from "./SwingChart";
+import { MetricCard } from "./SwingChart";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +27,6 @@ const RANGES = [
   { days: 0, label: "All time" },
 ] as const;
 
-const SWING_HIGHLIGHTS = 6;
-
 export default async function WfhReportPage({
   searchParams,
 }: {
@@ -43,7 +41,6 @@ export default async function WfhReportPage({
   );
 
   const noOfficeDaysYet = report.covers_from === null;
-  const highlights = report.metrics.slice(0, SWING_HIGHLIGHTS);
 
   return (
     <>
@@ -92,79 +89,14 @@ export default async function WfhReportPage({
               </Empty>
             </Card>
           ) : (
-            <>
-              <Card
-                title="Biggest swings"
-                subtitle="The metrics that differ most between day types, ranked by how large the swing is relative to the metric's own scale."
-              >
-                <DayTypeLegend />
-                <div className="divide-y divide-border">
-                  {highlights.map((metric) => (
-                    <SwingRow key={metric.metric} metric={metric} />
-                  ))}
-                </div>
-              </Card>
-
-              <Card
-                title="Every metric"
-                subtitle="All tracked metrics with enough data in at least two buckets to compare. Bold is the better bucket, for the handful of metrics with an undisputed direction."
-              >
-                <div className="overflow-x-auto">
-                  <table className="w-full border-separate border-spacing-0 text-sm">
-                    <thead>
-                      <tr>
-                        <th className="border-b border-border px-2 py-2 text-left text-xs font-semibold text-ink-dim">
-                          Metric
-                        </th>
-                        {BUCKETS.map((bucket) => (
-                          <th
-                            key={bucket.key}
-                            className="border-b border-border px-2 py-2 text-right text-xs font-semibold text-ink-dim"
-                          >
-                            {bucket.label}
-                          </th>
-                        ))}
-                        <th className="border-b border-border px-2 py-2 text-right text-xs font-semibold text-ink-dim">
-                          Swing
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-ink">
-                      {report.metrics.map((metric) => {
-                        const best = bestBucket(metric);
-                        return (
-                          <tr key={metric.metric}>
-                            <td className="border-b border-border/60 px-2 py-1.5 whitespace-nowrap">
-                              {metric.label}
-                            </td>
-                            {BUCKETS.map((bucket) => {
-                              const value = metric[bucket.key];
-                              return (
-                                <td
-                                  key={bucket.key}
-                                  className={`border-b border-border/60 px-2 py-1.5 text-right text-xs tabular-nums ${
-                                    best === bucket.key ? "font-semibold text-ink" : "text-ink-dim"
-                                  }`}
-                                >
-                                  {value === null || value === undefined
-                                    ? "—"
-                                    : fmtMetricValue(value, metric.unit)}
-                                </td>
-                              );
-                            })}
-                            <td className="border-b border-border/60 px-2 py-1.5 text-right text-xs tabular-nums text-ink-muted">
-                              {metric.swing_pct === null || metric.swing_pct === undefined
-                                ? "—"
-                                : `${Math.round(metric.swing_pct)}%`}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            </>
+            // Sorted by `swing_pct` already (see `office_report`), so the
+            // metrics that differ most between day types lead the grid
+            // without this page needing its own opinion about ranking.
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {report.metrics.map((metric) => (
+                <MetricCard key={metric.metric} metric={metric} />
+              ))}
+            </div>
           )}
 
           <p className="text-xs text-ink-muted">
