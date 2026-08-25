@@ -1852,6 +1852,8 @@ export interface components {
             at: string;
             /** Value */
             value: string;
+            /** Image Url */
+            image_url?: string | null;
         };
         /** HealthTrendOut */
         HealthTrendOut: {

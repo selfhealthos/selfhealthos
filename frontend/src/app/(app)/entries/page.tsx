@@ -98,6 +98,19 @@ export default async function EntriesPage({
                 className="h-1"
                 style={{ backgroundColor: TYPE_COLOURS[entry.type] ?? "var(--viz-1)" }}
               />
+              {entry.image_url && (
+                <a href={entry.image_url} target="_blank" rel="noreferrer">
+                  {/* Plain <img>: a same-origin user upload of unknown
+                      dimensions, so next/image's resizing pipeline and its
+                      width/height requirement buy nothing here. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={entry.image_url}
+                    alt={entry.value}
+                    className="h-32 w-full object-cover"
+                  />
+                </a>
+              )}
               <div className="p-3">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold tracking-wide text-ink-dim uppercase">
