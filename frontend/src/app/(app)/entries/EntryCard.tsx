@@ -49,44 +49,55 @@ export function EntryCard({
   }
 
   return (
-    <div className="w-56 overflow-hidden rounded-xl border border-border bg-surface">
+    <div className="relative w-56 overflow-hidden rounded-xl border border-border bg-surface">
       <div aria-hidden className="h-1" style={{ backgroundColor: colour }} />
+
+      {/* Top-right corner, above everything else on the card. Confirming
+          widens it into two tiny targets rather than replacing the × in
+          place, so a person who moves to tap confirm doesn't have to
+          re-aim at a button that swapped out from under their finger. */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        {confirming ? (
+          <>
+            <button
+              onClick={del}
+              disabled={busy}
+              aria-label="Confirm delete"
+              title="Confirm delete"
+              className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white disabled:opacity-50"
+            >
+              {busy ? "…" : "Confirm"}
+            </button>
+            <button
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              aria-label="Cancel"
+              title="Cancel"
+              className="flex size-5 items-center justify-center rounded-full bg-surface-2 text-ink-muted hover:text-ink"
+            >
+              ×
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            aria-label="Delete entry"
+            title="Delete entry"
+            className="flex size-5 items-center justify-center rounded-full bg-surface-2 text-sm leading-none text-ink-muted hover:bg-red-600 hover:text-white"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
       <div className="p-3">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="mb-1.5 flex items-center justify-between gap-2 pr-6">
           <span className="text-xs font-semibold tracking-wide text-ink-dim uppercase">
             {entry.label}
           </span>
           <span className="text-xs tabular-nums text-ink-muted">{time}</span>
         </div>
         <p className="text-sm text-ink">{entry.value}</p>
-
-        <div className="mt-2 flex items-center gap-2">
-          {confirming ? (
-            <>
-              <button
-                onClick={del}
-                disabled={busy}
-                className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
-              >
-                {busy ? "Deleting…" : "Confirm delete"}
-              </button>
-              <button
-                onClick={() => setConfirming(false)}
-                disabled={busy}
-                className="text-xs text-ink-muted hover:underline"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setConfirming(true)}
-              className="text-xs text-ink-muted hover:text-red-600 hover:underline dark:hover:text-red-400"
-            >
-              Delete
-            </button>
-          )}
-        </div>
         {error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
       {entry.image_url && (
