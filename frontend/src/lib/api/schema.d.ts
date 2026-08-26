@@ -324,7 +324,8 @@ export interface paths {
         delete: operations["deleteHealthEntry"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Correct one entry's fields, its time, or both */
+        patch: operations["updateHealthEntry"];
         trace?: never;
     };
     "/api/v1/health/today": {
@@ -1902,6 +1903,31 @@ export interface components {
             /** Entries */
             entries: components["schemas"]["HealthEntryOut"][];
         };
+        /**
+         * HealthEntryEditOut
+         * @description The editable fields of one timeline row, in their raw form.
+         *
+         *     Which of these are populated depends on the row's type - the same map
+         *     `services.update_entry` validates against.
+         */
+        HealthEntryEditOut: {
+            /** Name */
+            name?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Content */
+            content?: string | null;
+            /** Bristol */
+            bristol?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Systolic */
+            systolic?: number | null;
+            /** Diastolic */
+            diastolic?: number | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
+        };
         /** HealthEntryOut */
         HealthEntryOut: {
             /**
@@ -1927,6 +1953,12 @@ export interface components {
             lines: string[];
             /** Image Url */
             image_url?: string | null;
+            /**
+             * Editable
+             * @default false
+             */
+            editable: boolean;
+            edit?: components["schemas"]["HealthEntryEditOut"] | null;
         };
         /** HealthEntryDeleteOut */
         HealthEntryDeleteOut: {
@@ -1940,6 +1972,61 @@ export interface components {
              * @default true
              */
             deleted: boolean;
+        };
+        /** HealthEntryUpdateOut */
+        HealthEntryUpdateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Type */
+            type: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Local Date
+             * Format: date
+             */
+            local_date: string;
+            /**
+             * Updated
+             * @default true
+             */
+            updated: boolean;
+        };
+        /**
+         * HealthEntryUpdateIn
+         * @description One correction to a timeline row. Every field is optional; only what is
+         *     sent is changed.
+         *
+         *     Written out per field rather than taken as a loose dict, so the generated
+         *     TypeScript names what each type actually accepts. Which of these a given
+         *     type allows is `services._ENTRY_EDITABLE` - sending one it does not is an
+         *     error, not a silent no-op.
+         */
+        HealthEntryUpdateIn: {
+            /** At */
+            at?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Content */
+            content?: string | null;
+            /** Bristol */
+            bristol?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Systolic */
+            systolic?: number | null;
+            /** Diastolic */
+            diastolic?: number | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
         };
         /** HealthTrendOut */
         HealthTrendOut: {
@@ -4598,6 +4685,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthEntryDeleteOut"];
+                };
+            };
+        };
+    };
+    updateHealthEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_type: string;
+                entry_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HealthEntryUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthEntryUpdateOut"];
                 };
             };
         };

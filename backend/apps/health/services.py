@@ -1551,6 +1551,7 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "at": entry.occurred_at,
                 "value": entry.name,
                 "image_url": entry.photo.url if entry.photo else None,
+                "edit": {"name": entry.name},
             }
         )
 
@@ -1609,6 +1610,7 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "type": "gut",
                 "at": entry.occurred_at,
                 "value": f"Bristol {entry.bristol}",
+                "edit": {"bristol": entry.bristol, "notes": entry.notes},
             }
         )
 
@@ -1619,6 +1621,11 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "type": "vitals_bp",
                 "at": entry.occurred_at,
                 "value": f"{entry.systolic}/{entry.diastolic} mmHg",
+                "edit": {
+                    "systolic": entry.systolic,
+                    "diastolic": entry.diastolic,
+                    "notes": entry.notes,
+                },
             }
         )
 
@@ -1629,6 +1636,7 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "type": "vitals_weight",
                 "at": entry.occurred_at,
                 "value": f"{entry.weight_kg:g} kg",
+                "edit": {"weight_kg": entry.weight_kg, "notes": entry.notes},
             }
         )
 
@@ -1641,6 +1649,7 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "type": "note",
                 "at": entry.occurred_at,
                 "value": entry.title or preview or "(empty note)",
+                "edit": {"title": entry.title, "content": entry.content},
             }
         )
 
@@ -1703,6 +1712,11 @@ def entries_for_day(user, on: date | None = None) -> dict:
     labels = dict(_ENTRY_TYPES)
     for row in rows:
         row["label"] = labels[row["type"]]
+        # Derived from the one map that decides this, rather than restated in
+        # the UI - a type added to `_ENTRY_EDITABLE` should not also need a
+        # frontend list updating to become editable.
+        row["editable"] = row["type"] in _ENTRY_EDITABLE
+        row.setdefault("edit", None)
     rows.sort(key=lambda r: r["at"])
 
     return {"date": on, "entries": rows}

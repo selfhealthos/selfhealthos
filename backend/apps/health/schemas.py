@@ -524,6 +524,23 @@ class HealthDocOut(Schema):
 # -- entries timeline --------------------------------------------------------
 
 
+class HealthEntryEditOut(Schema):
+    """The editable fields of one timeline row, in their raw form.
+
+    Which of these are populated depends on the row's type - the same map
+    `services.update_entry` validates against.
+    """
+
+    name: str | None = None
+    title: str | None = None
+    content: str | None = None
+    bristol: int | None = None
+    notes: str | None = None
+    systolic: int | None = None
+    diastolic: int | None = None
+    weight_kg: float | None = None
+
+
 class HealthEntryOut(Schema):
     id: UUID
     type: str
@@ -538,6 +555,15 @@ class HealthEntryOut(Schema):
     #: `HealthDietEntryOut.image_url` for why it can be null on a row that
     #: otherwise looks complete.
     image_url: str | None = None
+    #: Whether this row can be corrected at all - see
+    #: `services._ENTRY_EDITABLE`. False for `gym` (one card, many rows),
+    #: `doc` and `fitness_test`.
+    editable: bool = False
+    #: The raw values behind `value`, for prefilling an edit form. Null on a
+    #: type that only takes a new time. `value` is formatted for reading
+    #: ("118/76 mmHg"), and parsing it back into fields is precisely the
+    #: fragility that breaks the first time a format changes.
+    edit: HealthEntryEditOut | None = None
 
 
 class HealthEntriesDayOut(Schema):
