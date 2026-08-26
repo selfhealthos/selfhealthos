@@ -103,6 +103,13 @@ function ClipFrame({ exercise }: { exercise: FitnessExercise }) {
  * read before you start or after you finish, not mid-hold. The day totals and
  * the partner chips stay: both change what you do next.
  *
+ * Two columns: the clip takes the left side and stretches to fill whatever
+ * space is left, since the video is the thing actually being watched mid-set.
+ * Everything you interact with - Complete/Skip, the exercise name, the clock,
+ * the totals - lives in a fixed-width right-hand sidebar instead of stacked
+ * above/beside the video, so the video's box is never shrunk to make room
+ * for a wide button row above it.
+ *
  * The clock is clamped rather than a fixed size: ~35mm of digit height is what
  * reads effortlessly at 2m, which is a different number of pixels on a laptop
  * than on a TV.
@@ -137,46 +144,80 @@ function FocusView({
   onExit: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-30 flex flex-col gap-4 bg-bg p-4 sm:p-6">
-      <div className="flex shrink-0 items-center justify-end">
-        <button
-          type="button"
-          onClick={onExit}
-          className="rounded-md px-3 py-1.5 text-sm text-ink-dim transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          Exit focus <span className="text-ink-muted">(Esc)</span>
-        </button>
+    <div className="fixed inset-0 z-30 flex flex-col gap-4 bg-bg p-4 sm:p-6 lg:flex-row lg:gap-6">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl bg-black">
+        <ClipFrame exercise={exercise} />
       </div>
 
-      {/* Above the clip, not below it: this is the thing you walk back to the
-          screen to press, and hunting for it under a 16:9 video means looking
-          at the bottom of the screen instead of the exercise. Complete sits on
-          the right, where the press that ends a set belongs. */}
-      <div className="flex shrink-0 flex-col items-center gap-3">
-        <div className="flex w-full max-w-3xl gap-4">
+      <div className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto lg:w-80 xl:w-96">
+        <div className="flex shrink-0 items-center justify-end">
           <button
             type="button"
-            onClick={onSkip}
-            disabled={pending}
-            className="flex-1 rounded-xl border border-border px-6 py-5 text-2xl font-semibold text-ink-dim transition-colors hover:bg-surface-2 disabled:opacity-60 sm:text-3xl"
+            onClick={onExit}
+            className="rounded-md px-3 py-1.5 text-sm text-ink-dim transition-colors hover:bg-surface-2 hover:text-ink"
           >
-            Skip →
+            Exit focus <span className="text-ink-muted">(Esc)</span>
           </button>
+        </div>
+
+        {/* Complete first: it's the press that ends a set, and the sidebar
+            puts it within reach without hunting past the video for it. */}
+        <div className="flex flex-col gap-3">
           <button
             type="button"
             onClick={onComplete}
             disabled={pending}
-            className="flex-1 rounded-xl bg-good px-6 py-5 text-2xl font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60 sm:text-3xl"
+            className="rounded-xl bg-good px-6 py-6 text-2xl font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             ✓ Complete
           </button>
+          <button
+            type="button"
+            onClick={onSkip}
+            disabled={pending}
+            className="rounded-xl border border-border px-6 py-4 text-xl font-semibold text-ink-dim transition-colors hover:bg-surface-2 disabled:opacity-60"
+          >
+            Skip →
+          </button>
         </div>
+
+        <div>
+          <p className="text-xl font-medium text-balance text-ink">
+            {exercise.title}
+          </p>
+          <p className="text-[clamp(3rem,7vw,6rem)] leading-none font-bold tabular-nums text-ink">
+            {clock(elapsed)}
+          </p>
+        </div>
+
+        {/* The running day totals, same numbers as the normal header's
+            stats - they move on every Complete, including the presses made
+            from in here. */}
+        <div className="flex gap-10">
+          <div>
+            <p className="text-3xl font-bold tabular-nums text-ink">
+              {stats.minutes_today}
+            </p>
+            <p className="text-xs tracking-wider text-ink-muted uppercase">
+              min today
+            </p>
+          </div>
+          <div>
+            <p className="text-3xl font-bold tabular-nums text-ink">
+              {stats.completed_today}
+            </p>
+            <p className="text-xs tracking-wider text-ink-muted uppercase">
+              exercises today
+            </p>
+          </div>
+        </div>
+
         {/* Live here, not just a summary: a friend who taps out halfway gets
             unticked mid-session, and every Complete after that is yours
             alone. Leaving focus mode to reach the chips would mean the
             abandoned half of the workout lands in their log. */}
         {partners.length > 0 && (
-          <div className="flex flex-wrap items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             {partners.map((partner) => {
               const on = withPartners.includes(partner.id);
               return (
@@ -191,7 +232,7 @@ function FocusView({
                       : `${partner.username} isn't accepting shared workouts`
                   }
                   onClick={() => onTogglePartner(partner.id)}
-                  className={`rounded-full border px-5 py-2 text-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`rounded-full border px-4 py-1.5 text-base transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                     on
                       ? "border-good bg-good/15 text-good"
                       : "border-border text-ink-dim hover:bg-surface-2"
@@ -204,52 +245,16 @@ function FocusView({
             })}
           </div>
         )}
-      </div>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 lg:flex-row lg:gap-10">
-        <div className="aspect-video w-full max-w-4xl shrink-0 overflow-hidden rounded-xl bg-black lg:h-full lg:w-auto lg:max-w-[58%]">
-          <ClipFrame exercise={exercise} />
-        </div>
-
-        <div className="shrink-0 text-center lg:text-left">
-          <p className="text-2xl font-medium text-balance text-ink sm:text-3xl">
-            {exercise.title}
+        {error && (
+          <p
+            role="alert"
+            className="rounded-xl border border-critical/30 bg-critical/10 px-4 py-3 text-base text-critical"
+          >
+            {error}
           </p>
-          <p className="text-[clamp(4rem,11vw,9rem)] leading-none font-bold tabular-nums text-ink">
-            {clock(elapsed)}
-          </p>
-          {/* The running day totals, same numbers as the normal header's
-              stats - they move on every Complete, including the presses made
-              from in here. */}
-          <div className="mt-6 flex justify-center gap-10 lg:justify-start">
-            <div>
-              <p className="text-4xl font-bold tabular-nums text-ink">
-                {stats.minutes_today}
-              </p>
-              <p className="text-xs tracking-wider text-ink-muted uppercase">
-                min today
-              </p>
-            </div>
-            <div>
-              <p className="text-4xl font-bold tabular-nums text-ink">
-                {stats.completed_today}
-              </p>
-              <p className="text-xs tracking-wider text-ink-muted uppercase">
-                exercises today
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
-
-      {error && (
-        <p
-          role="alert"
-          className="shrink-0 rounded-xl border border-critical/30 bg-critical/10 px-4 py-3 text-center text-lg text-critical"
-        >
-          {error}
-        </p>
-      )}
     </div>
   );
 }
