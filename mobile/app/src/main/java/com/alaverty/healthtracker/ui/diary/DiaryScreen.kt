@@ -32,7 +32,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
 import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 @Composable
@@ -230,9 +233,17 @@ private fun DiaryItemRow(item: DiaryItem) {
     val noteBlocks = remember(item) {
         if (item is DiaryItem.Note) item.entry.content.toNoteBlocks() else emptyList()
     }
+    val timeFmt = remember { SimpleDateFormat("h:mm a", Locale.getDefault()) }
 
     Column {
         ListItem(
+            trailingContent = {
+                Text(
+                    timeFmt.format(Date(item.timestamp)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
             headlineContent = {
                 when (item) {
                     is DiaryItem.Diet -> Text(item.entry.name)

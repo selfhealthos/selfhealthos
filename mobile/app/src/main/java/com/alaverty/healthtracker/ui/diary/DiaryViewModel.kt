@@ -1,5 +1,6 @@
 package com.alaverty.healthtracker.ui.diary
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.alaverty.healthtracker.data.local.entity.BmEntry
@@ -50,6 +51,8 @@ sealed class DiaryItem {
         override val timestamp get() = entry.completedAt
     }
 }
+
+private const val TAG = "DiaryViewModel"
 
 @HiltViewModel
 class DiaryViewModel @Inject constructor(
@@ -111,14 +114,19 @@ class DiaryViewModel @Inject constructor(
     }
 
     /**
-     * Copies an entry to a new record at the current time (on the day being viewed),
-     * so a repeat of the same thing — e.g. a second coffee or a second magnesium dose —
-     * can be logged with one swipe.
+     * Copies an entry to a new record dated today at the current time — regardless of
+     * which day is currently being viewed — so a repeat of the same thing (e.g. a second
+     * coffee or a second magnesium dose) can be logged with one swipe from any day's view.
      */
     fun duplicateEntry(item: DiaryItem) {
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val ts = nowTimestampOnSelectedDate()
+            val ts = now
+            Log.d(
+                TAG,
+                "duplicate: viewing=${_selectedDate.value} -> today=${LocalDate.now()} " +
+                    "ts=$ts zone=${ZoneId.systemDefault()}"
+            )
             when (item) {
                 is DiaryItem.Diet -> repository.insertDietEntry(
                     item.entry.copy(id = UUID.randomUUID().toString(), timestamp = ts, updatedAt = now, isSynced = false)
@@ -141,20 +149,20 @@ class DiaryViewModel @Inject constructor(
                 is DiaryItem.Body -> repository.insertBodyMeasurement(
                     item.entry.copy(id = UUID.randomUUID().toString(), timestamp = ts, updatedAt = now, isSynced = false)
                 )
+                // `date` is stored, not computed from `completedAt`, and it is what the
+                // diary actually queries by — moving only `completedAt` leaves the copy
+                // sitting on the day being viewed. Both have to move together.
                 is DiaryItem.Habit -> repository.insertHabitCompletion(
-                    item.entry.copy(id = UUID.randomUUID().toString(), completedAt = ts, updatedAt = now, isSynced = false)
+                    item.entry.copy(
+                        id = UUID.randomUUID().toString(),
+                        date = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
+                        completedAt = ts,
+                        updatedAt = now,
+                        isSynced = false
+                    )
                 )
             }
         }
-    }
-
-    private fun nowTimestampOnSelectedDate(): Long {
-        val zone = ZoneId.systemDefault()
-        return _selectedDate.value
-            .atTime(LocalTime.now(zone))
-            .atZone(zone)
-            .toInstant()
-            .toEpochMilli()
     }
 
     fun addDietEntry(name: String, photoPath: String?) {
