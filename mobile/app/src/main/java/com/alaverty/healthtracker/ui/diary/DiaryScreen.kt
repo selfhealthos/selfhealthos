@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
@@ -43,6 +44,7 @@ fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
     val selectedDate by viewModel.selectedDate.collectAsState()
     val items by viewModel.diaryItems.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingItem by remember { mutableStateOf<DiaryItem?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -122,6 +124,7 @@ fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
                             item = item,
                             onDelete = { onDeleteItem(item) },
                             onDuplicate = { onDuplicateItem(item) },
+                            onClick = { editingItem = item },
                             modifier = Modifier.animateItem()
                         )
                     }
@@ -146,10 +149,22 @@ fun DiaryScreen(viewModel: DiaryViewModel = hiltViewModel()) {
 
     if (showAddDialog) {
         AddDietEntryDialog(
+            initialTimestamp = viewModel.defaultTimestampForNewEntry(),
             onDismiss = { showAddDialog = false },
-            onConfirm = { name, photoPath ->
-                viewModel.addDietEntry(name, photoPath)
+            onConfirm = { name, photoPath, timestamp ->
+                viewModel.addDietEntry(name, photoPath, timestamp)
                 showAddDialog = false
+            }
+        )
+    }
+
+    editingItem?.let { item ->
+        EditEntryDialog(
+            item = item,
+            onDismiss = { editingItem = null },
+            onSave = { edited ->
+                viewModel.updateEntry(edited)
+                editingItem = null
             }
         )
     }
@@ -161,6 +176,7 @@ private fun SwipeToDeleteRow(
     item: DiaryItem,
     onDelete: () -> Unit,
     onDuplicate: () -> Unit,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val currentOnDelete by rememberUpdatedState(onDelete)
@@ -220,6 +236,9 @@ private fun SwipeToDeleteRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface)
+                // Tap to edit. On the Column rather than the ListItem so the
+                // whole row is the target, including the photo below it.
+                .clickable(onClick = onClick)
         ) {
             DiaryItemRow(item)
             HorizontalDivider()
@@ -364,13 +383,17 @@ private fun AsyncFileImage(path: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AddDietEntryDialog(
+    initialTimestamp: Long,
     onDismiss: () -> Unit,
-    onConfirm: (String, String?) -> Unit
+    onConfirm: (String, String?, Long) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf("") }
     var photoPath by remember { mutableStateOf<String?>(null) }
+    // Defaults to now on the day being viewed, so the common case is one tap
+    // and the backdated case is still reachable without leaving the dialog.
+    var timestamp by remember { mutableStateOf(initialTimestamp) }
 
     // Prepare a file for camera capture
     val photoFile = remember {
@@ -452,11 +475,13 @@ private fun AddDietEntryDialog(
                         }
                     }
                 }
+
+                DateTimeField(millis = timestamp, onChange = { timestamp = it })
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { if (name.isNotBlank()) onConfirm(name, photoPath) },
+                onClick = { if (name.isNotBlank()) onConfirm(name, photoPath, timestamp) },
                 enabled = name.isNotBlank()
             ) { Text("Add") }
         },
