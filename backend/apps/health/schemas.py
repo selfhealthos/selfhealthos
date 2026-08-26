@@ -530,6 +530,10 @@ class HealthEntryOut(Schema):
     label: str
     at: datetime
     value: str
+    #: Detail lines under `value`, one per line. Only `gym` fills it, where
+    #: the card is an exercise and each line is one set ("80 kg x 10 reps") -
+    #: every other type says everything it has to in `value`.
+    lines: list[str] = []
     #: Set only for `diet`/`doc` rows with a synced photo. See
     #: `HealthDietEntryOut.image_url` for why it can be null on a row that
     #: otherwise looks complete.

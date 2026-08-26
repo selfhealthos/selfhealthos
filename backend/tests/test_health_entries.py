@@ -133,3 +133,79 @@ def test_entries_endpoint_is_scoped_to_the_caller(alex, client_for, today):
 
     assert response.status_code == 200
     assert response.json()["entries"] == []
+
+
+# -- gym --------------------------------------------------------------------
+#
+# Gym is the one type where a card is *not* a row: sets are grouped into one
+# card per exercise, because a leg day is thirty `GymSet` rows and thirty
+# cards would bury everything else logged that day.
+
+
+def gym_set(user, day: date, name: str, weight: float, reps: int, hour: int):
+    from apps.health.models import GymSet
+
+    return GymSet.objects.create(
+        created_by=user,
+        exercise_name=name,
+        local_date=day,
+        performed_at=at(day, hour),
+        weight_kg=weight,
+        reps=reps,
+    )
+
+
+def test_gym_sets_are_grouped_into_one_card_per_exercise(alex, today):
+    gym_set(alex, today, "Squat", 80, 10, 9)
+    gym_set(alex, today, "Squat", 85, 10, 10)
+    gym_set(alex, today, "Chin Ups", 70, 8, 11)
+
+    result = services.entries_for_day(alex, today)
+    gym = [e for e in result["entries"] if e["type"] == "gym"]
+
+    assert len(gym) == 2
+    assert {e["value"] for e in gym} == {"Squat", "Chin Ups"}
+    squat = next(e for e in gym if e["value"] == "Squat")
+    assert squat["lines"] == ["80 kg x 10 reps", "85 kg x 10 reps"]
+
+
+def test_set_lines_read_in_the_order_they_were_performed(alex, today):
+    # Inserted heaviest-first so a pass that leaned on insertion order fails.
+    gym_set(alex, today, "Squat", 90, 8, 11)
+    gym_set(alex, today, "Squat", 80, 10, 9)
+    gym_set(alex, today, "Squat", 85, 10, 10)
+
+    result = services.entries_for_day(alex, today)
+    squat = next(e for e in result["entries"] if e["type"] == "gym")
+
+    assert squat["lines"] == ["80 kg x 10 reps", "85 kg x 10 reps", "90 kg x 8 reps"]
+
+
+def test_a_bodyweight_set_says_reps_not_zero_kg(alex, today):
+    gym_set(alex, today, "Press Ups", 0, 20, 9)
+
+    result = services.entries_for_day(alex, today)
+    card = next(e for e in result["entries"] if e["type"] == "gym")
+
+    assert card["lines"] == ["20 reps"]
+
+
+def test_a_gym_card_sits_at_its_earliest_set(alex, today):
+    gym_set(alex, today, "Squat", 80, 10, 15)
+    gym_set(alex, today, "Squat", 85, 10, 9)
+    DietEntry.objects.create(
+        created_by=alex, name="lunch", occurred_at=at(today, 12), local_date=today
+    )
+
+    result = services.entries_for_day(alex, today)
+
+    # 09:00 squat group, then the 12:00 lunch - not the 15:00 last set.
+    assert [e["type"] for e in result["entries"]] == ["gym", "diet"]
+
+
+def test_gym_sets_from_another_day_do_not_leak_in(alex, today):
+    gym_set(alex, today - timedelta(days=1), "Squat", 80, 10, 9)
+
+    result = services.entries_for_day(alex, today)
+
+    assert [e for e in result["entries"] if e["type"] == "gym"] == []

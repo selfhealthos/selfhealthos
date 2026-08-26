@@ -98,6 +98,18 @@ export function EntryCard({
           <span className="text-xs tabular-nums text-ink-muted">{time}</span>
         </div>
         <p className="text-sm text-ink">{entry.value}</p>
+        {/* Only `gym` sends these - one line per set under the exercise name.
+            Tabular figures so the weights line up column-wise down the card,
+            which is what makes a warm-up ramp readable at a glance. */}
+        {entry.lines.length > 0 && (
+          <ul className="mt-1 space-y-0.5">
+            {entry.lines.map((line, i) => (
+              <li key={i} className="text-xs tabular-nums text-ink-dim">
+                {line}
+              </li>
+            ))}
+          </ul>
+        )}
         {error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
       {entry.image_url && (

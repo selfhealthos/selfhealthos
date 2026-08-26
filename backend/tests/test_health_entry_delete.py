@@ -9,7 +9,7 @@ tell the caller whether it existed.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -124,3 +124,58 @@ def test_anonymous_callers_are_refused(alex, db):
     response = Client().delete(f"/api/v1/health/entries/diet/{entry.id}")
 
     assert response.status_code in (401, 403)
+
+
+# -- gym --------------------------------------------------------------------
+
+
+def _gym_set(user, day: date, name: str, weight: float, reps: int):
+    from apps.health.models import GymSet
+
+    return GymSet.objects.create(
+        created_by=user,
+        exercise_name=name,
+        local_date=day,
+        performed_at=datetime(day.year, day.month, day.day, 9, 0, tzinfo=UTC),
+        weight_kg=weight,
+        reps=reps,
+    )
+
+
+def test_deleting_a_gym_card_tombstones_the_whole_exercise(alex, client_for):
+    day = date.today()
+    first, second, third = (
+        _gym_set(alex, day, "Squat", 80, 10),
+        _gym_set(alex, day, "Squat", 85, 10),
+        _gym_set(alex, day, "Squat", 90, 8),
+    )
+
+    # The card's id is only its first set's - see services.entries_for_day.
+    response = client_for(alex).delete(f"/api/v1/health/entries/gym/{first.id}")
+
+    assert response.status_code == 200
+    for entry in (first, second, third):
+        entry.refresh_from_db()
+        assert entry.deleted_at is not None, "a set was left behind by the card's delete"
+
+
+def test_deleting_one_exercise_leaves_the_others_alone(alex, client_for):
+    day = date.today()
+    squat = _gym_set(alex, day, "Squat", 80, 10)
+    chins = _gym_set(alex, day, "Chin Ups", 70, 8)
+
+    client_for(alex).delete(f"/api/v1/health/entries/gym/{squat.id}")
+
+    chins.refresh_from_db()
+    assert chins.deleted_at is None
+
+
+def test_deleting_a_gym_card_leaves_the_same_exercise_on_other_days(alex, client_for):
+    today, yesterday = date.today(), date.today() - timedelta(days=1)
+    todays = _gym_set(alex, today, "Squat", 80, 10)
+    yesterdays = _gym_set(alex, yesterday, "Squat", 75, 10)
+
+    client_for(alex).delete(f"/api/v1/health/entries/gym/{todays.id}")
+
+    yesterdays.refresh_from_db()
+    assert yesterdays.deleted_at is None

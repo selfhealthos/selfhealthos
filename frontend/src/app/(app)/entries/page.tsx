@@ -25,10 +25,11 @@ export const dynamic = "force-dynamic";
 
 const TIME_ZONE = "Australia/Melbourne";
 
-//: Fixed per entry type, from the app's own categorical ramp - a 9th type
-//: (fitness_test) falls back to a brand colour rather than reusing a slot,
-//: since color here is a secondary accent, not the primary identifier (the
-//: label at the top of each card already states the type in words).
+//: Fixed per entry type, from the app's own categorical ramp - the 9th and
+//: 10th types (fitness_test, gym) fall back to brand colours rather than
+//: reusing a slot, since color here is a secondary accent, not the primary
+//: identifier (the label at the top of each card already states the type in
+//: words).
 const TYPE_COLOURS: Record<string, string> = {
   diet: "var(--viz-1)",
   exercise: "var(--viz-2)",
@@ -39,6 +40,7 @@ const TYPE_COLOURS: Record<string, string> = {
   doc: "var(--viz-7)",
   body: "var(--viz-8)",
   fitness_test: "var(--color-brand-teal)",
+  gym: "var(--color-brand-purple)",
 };
 
 function shiftDate(iso: string, delta: number): string {

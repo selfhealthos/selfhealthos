@@ -1903,6 +1903,11 @@ export interface components {
             at: string;
             /** Value */
             value: string;
+            /**
+             * Lines
+             * @default []
+             */
+            lines: string[];
             /** Image Url */
             image_url?: string | null;
         };

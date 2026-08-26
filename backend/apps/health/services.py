@@ -1491,6 +1491,7 @@ def doc_list(user, *, limit: int = NOTE_LIMIT) -> list[dict]:
 _ENTRY_TYPES: tuple[tuple[str, str], ...] = (
     ("diet", "Diet"),
     ("exercise", "Exercise"),
+    ("gym", "Gym"),
     ("gut", "Gut"),
     ("vitals_bp", "Blood pressure"),
     ("vitals_weight", "Weight"),
@@ -1506,6 +1507,9 @@ _ENTRY_TYPES: tuple[tuple[str, str], ...] = (
 _ENTRY_MODELS: dict[str, type] = {
     "diet": DietEntry,
     "exercise": ExerciseEntry,
+    #: The id on a `gym` row is its *first set's* - the card is the exercise,
+    #: not the set. `delete_entry` fans out from it; see there.
+    "gym": GymSet,
     "gut": BmEntry,
     "vitals_bp": BpEntry,
     "vitals_weight": WeightEntry,
@@ -1534,7 +1538,8 @@ def entries_for_day(user, on: date | None = None) -> dict:
     data. A fresh day with nothing logged yet is exactly what "Today" should
     show on an entries timeline.
     """
-    on = on or timeutils.local_date_of(_utcnow(), timeutils.tz_for(user))
+    tz = timeutils.tz_for(user)
+    on = on or timeutils.local_date_of(_utcnow(), tz)
     live = {"created_by": user, "deleted_at__isnull": True, "local_date": on}
     rows: list[dict] = []
 
@@ -1556,6 +1561,44 @@ def entries_for_day(user, on: date | None = None) -> dict:
                 "type": "exercise",
                 "at": entry.occurred_at,
                 "value": f"{entry.video_name} · {entry.duration_minutes} min",
+            }
+        )
+
+    #: One card per exercise, not per set. A leg day is thirty `GymSet` rows
+    #: and thirty cards would bury everything else logged that day; the sets
+    #: belong *inside* the exercise, which is also how they were entered on
+    #: the phone. `lines` carries them - a single `value` string cannot,
+    #: because the whole point is one set per line.
+    #:
+    #: Ordered by `performed_at` within the exercise so the lines read in the
+    #: order the sets were actually done (usually a warm-up ramp), with
+    #: `created_at` breaking ties for the older rows that synced without a
+    #: timestamp.
+    gym_sets = GymSet.objects.filter(**live).order_by("performed_at", "created_at")
+    by_exercise: dict[str, list] = {}
+    for gym_set in gym_sets:
+        by_exercise.setdefault(gym_set.exercise_name or "Unnamed exercise", []).append(gym_set)
+
+    #: Fallback for a group whose sets all synced without a `performed_at`
+    #: (nullable - see `_merge_gym_set`). The timeline sorts on `at`, so it
+    #: has to be *some* instant on the right day rather than null.
+    day_start = timeutils.utc_from_local_parts(on, time(0, 0), tz)
+
+    for name, sets in by_exercise.items():
+        performed = [s.performed_at for s in sets if s.performed_at is not None]
+        rows.append(
+            {
+                "id": sets[0].id,
+                "type": "gym",
+                "at": min(performed) if performed else day_start,
+                "value": name,
+                # Weight of 0 is bodyweight, not "0 kg" - chin-ups and
+                # press-ups log reps alone and reading "0 kg x 10" as a
+                # failed entry is the obvious misread.
+                "lines": [
+                    f"{s.weight_kg:g} kg x {s.reps} reps" if s.weight_kg else f"{s.reps} reps"
+                    for s in sets
+                ],
             }
         )
 
@@ -1688,8 +1731,21 @@ def delete_entry(user, *, entry_type: str, entry_id) -> None:
     if entry is None:
         raise NotFound("entry not found")
 
-    entry.deleted_at = _utcnow()
-    entry.save(update_fields=["deleted_at"])
+    now = _utcnow()
+    if entry_type == "gym":
+        # A gym card is one exercise's whole set list and its id is only the
+        # first set's, so tombstoning that row alone would leave the card on
+        # the page with its top line missing - a delete that looks like it
+        # failed. The group is what was shown, so the group is what goes.
+        GymSet.objects.filter(
+            created_by=user,
+            deleted_at__isnull=True,
+            local_date=entry.local_date,
+            exercise_name=entry.exercise_name,
+        ).update(deleted_at=now, updated_at=now)
+    else:
+        entry.deleted_at = now
+        entry.save(update_fields=["deleted_at"])
 
     # Harmless for the types with no chart behind them (doc, body,
     # fitness_test) - rebuild is idempotent and this keeps the deletion path
