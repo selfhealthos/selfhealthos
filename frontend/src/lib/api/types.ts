@@ -58,6 +58,7 @@ export type HealthLabMarker = components["schemas"]["HealthLabMarkerOut"];
 export type HealthNote = components["schemas"]["HealthNoteOut"];
 export type HealthDoc = components["schemas"]["HealthDocOut"];
 export type HealthEntriesDay = components["schemas"]["HealthEntriesDayOut"];
+export type HealthGymLog = components["schemas"]["HealthGymLogOut"];
 export type HealthEntry = components["schemas"]["HealthEntryOut"];
 export type HealthOffice = components["schemas"]["HealthOfficeOut"];
 export type HealthOfficeDay = components["schemas"]["HealthOfficeDayOut"];

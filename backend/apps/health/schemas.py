@@ -550,6 +550,43 @@ class HealthEntryDeleteOut(Schema):
     deleted: bool = True
 
 
+# -- gym --------------------------------------------------------------------
+
+
+class HealthGymDayOut(Schema):
+    date: date
+    tonnage_kg: float
+
+
+class HealthGymCellOut(Schema):
+    #: Null when the exercise was not trained that day. Not 0 - a movement you
+    #: skipped is absent, not lifted with no weight.
+    tonnage_kg: float | None = None
+    #: The day's sets, compactly: `40x10`, or `10 reps` when bodyweight.
+    sets: list[str] = []
+
+
+class HealthGymExerciseOut(Schema):
+    name: str
+    total_kg: float
+    #: One per date in `HealthGymLogOut.dates`, same order. A parallel array
+    #: rather than a map, for the reason `HealthHabitRowOut.completed` is one.
+    cells: list[HealthGymCellOut]
+
+
+class HealthGymLogOut(Schema):
+    start: date
+    end: date
+    days: int
+    #: Only days actually trained, newest first - the grid's column order.
+    dates: list[date]
+    #: The same days oldest first, because a chart reads through time.
+    series: list[HealthGymDayOut]
+    exercises: list[HealthGymExerciseOut]
+    total_kg: float
+    sessions: int
+
+
 # -- office days ------------------------------------------------------------
 
 

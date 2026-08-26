@@ -43,6 +43,7 @@ from .schemas import (
     HealthExchangeIn,
     HealthFitnessOut,
     HealthGutOut,
+    HealthGymLogOut,
     HealthGymSyncIn,
     HealthHabitHistoryOut,
     HealthHeartDayOut,
@@ -250,6 +251,16 @@ def get_diet(request, days: int = 30, q: str | None = None):
 )
 def get_gut(request, days: int = 30):
     return services.gut_detail(request.auth, days=days)
+
+
+@router.get(
+    "/gym",
+    response=HealthGymLogOut,
+    summary="Tonnage over time and the per-exercise grid behind it",
+    operation_id="getHealthGym",
+)
+def get_gym(request, days: int = 30):
+    return services.gym_log(request.auth, days=days)
 
 
 @router.get(

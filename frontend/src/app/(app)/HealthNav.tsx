@@ -40,6 +40,7 @@ const SECTIONS: ReadonlyArray<{ title: string; items: readonly Item[] }> = [
   {
     title: "Fitness",
     items: [
+      { href: "/gym", label: "Gym", icon: "▮" },
       { href: "/workout", label: "Workout", icon: "◈" },
       { href: "/fitness", label: "Tests", icon: "◎" },
       { href: "/friends", label: "Friends", icon: "◉" },

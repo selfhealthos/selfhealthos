@@ -482,6 +482,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/gym": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tonnage over time and the per-exercise grid behind it */
+        get: operations["getHealthGym"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/bristol": {
         parameters: {
             query?: never;
@@ -2269,6 +2286,60 @@ export interface components {
             days_eaten: number;
             /** Share */
             share: number;
+        };
+        /** HealthGymCellOut */
+        HealthGymCellOut: {
+            /** Tonnage Kg */
+            tonnage_kg?: number | null;
+            /**
+             * Sets
+             * @default []
+             */
+            sets: string[];
+        };
+        /** HealthGymDayOut */
+        HealthGymDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Tonnage Kg */
+            tonnage_kg: number;
+        };
+        /** HealthGymExerciseOut */
+        HealthGymExerciseOut: {
+            /** Name */
+            name: string;
+            /** Total Kg */
+            total_kg: number;
+            /** Cells */
+            cells: components["schemas"]["HealthGymCellOut"][];
+        };
+        /** HealthGymLogOut */
+        HealthGymLogOut: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Days */
+            days: number;
+            /** Dates */
+            dates: string[];
+            /** Series */
+            series: components["schemas"]["HealthGymDayOut"][];
+            /** Exercises */
+            exercises: components["schemas"]["HealthGymExerciseOut"][];
+            /** Total Kg */
+            total_kg: number;
+            /** Sessions */
+            sessions: number;
         };
         /** HealthBristolDailyOut */
         HealthBristolDailyOut: {
@@ -4709,6 +4780,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthGutOut"];
+                };
+            };
+        };
+    };
+    getHealthGym: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthGymLogOut"];
                 };
             };
         };

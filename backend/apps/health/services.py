@@ -2743,3 +2743,110 @@ def attach_entry_photo(user, *, kind: str, client_id: str, file) -> dict:
     entry.photo = file
     entry.save(update_fields=["photo"])
     return {"stored": True, "reason": None}
+
+
+# --------------------------------------------------------------------------
+# Gym
+# --------------------------------------------------------------------------
+
+
+def _set_notation(weight: float, reps: int) -> str:
+    """One set, compactly. `40x10`, or `10 reps` when it was bodyweight.
+
+    Zero weight is bodyweight work - chin-ups, press-ups - not a set lifted
+    with nothing on the bar. Rendering it `0x10` reads as a failed entry, the
+    same misread `entries_for_day` avoids.
+    """
+    return f"{weight:g}x{reps}" if weight else f"{reps} reps"
+
+
+def gym_log(user, *, days: int = 30) -> dict:
+    """Tonnage over time, and the per-exercise grid behind it.
+
+    Tonnage is `volume_kg` summed - stored per set, not multiplied on read,
+    because it is summed across thousands of rows (see `GymSet`).
+
+    Only days that were actually trained appear, in both the series and the
+    grid. A rest day is not a zero-tonnage day, it is a day with no data, and
+    padding the gaps with zeroes would both flatten the chart and imply a
+    workout that never happened - the zero-vs-absent trap in the root
+    CLAUDE.md. It also keeps the chart's bars and the grid's columns on the
+    same dates, so the two read together.
+
+    The grid is exercises down, dates across, newest date first: the useful
+    comparison is this week's working weight against last week's, which wants
+    them side by side.
+    """
+    days = max(1, min(days, 3_650))
+    tz = timeutils.tz_for(user)
+    end = timeutils.local_date_of(_utcnow(), tz)
+    start = end - timedelta(days=days - 1)
+
+    rows = GymSet.objects.filter(
+        created_by=user,
+        deleted_at__isnull=True,
+        local_date__gte=start,
+        local_date__lte=end,
+    ).order_by("local_date", "exercise_name", "performed_at", "created_at")
+
+    #: (date, exercise) -> the sets done, in the order they were performed.
+    cells: dict[tuple[date, str], list] = {}
+    tonnage_by_day: dict[date, float] = {}
+    for row in rows:
+        name = row.exercise_name or "Unnamed exercise"
+        cells.setdefault((row.local_date, name), []).append(row)
+        tonnage_by_day[row.local_date] = tonnage_by_day.get(row.local_date, 0.0) + (
+            row.volume_kg or 0.0
+        )
+
+    #: Oldest first - a chart reads left to right through time.
+    series = [
+        {"date": day, "tonnage_kg": round(tonnage, 1)}
+        for day, tonnage in sorted(tonnage_by_day.items())
+    ]
+    #: Newest first, the order the grid's columns are in.
+    dates = [day for day, _ in sorted(tonnage_by_day.items(), reverse=True)]
+
+    #: Busiest exercise first, so the movements that carry the training show
+    #: at the top rather than whatever happens to sort first alphabetically.
+    totals: dict[str, float] = {}
+    for (_, name), sets in cells.items():
+        totals[name] = totals.get(name, 0.0) + sum(s.volume_kg or 0.0 for s in sets)
+
+    exercises = []
+    for name in sorted(totals, key=lambda n: (-totals[n], n)):
+        exercises.append(
+            {
+                "name": name,
+                "total_kg": round(totals[name], 1),
+                # Aligned to `dates`, same order, one entry each - a parallel
+                # array rather than a map, for the same reason
+                # `HealthHabitRowOut.completed` is one: the grid is rendered
+                # cell by cell and a lookup per cell is what makes it slow.
+                "cells": [
+                    {
+                        "tonnage_kg": round(
+                            sum(s.volume_kg or 0.0 for s in cells.get((day, name), [])), 1
+                        )
+                        if (day, name) in cells
+                        else None,
+                        "sets": [
+                            _set_notation(s.weight_kg or 0, s.reps or 0)
+                            for s in cells.get((day, name), [])
+                        ],
+                    }
+                    for day in dates
+                ],
+            }
+        )
+
+    return {
+        "start": start,
+        "end": end,
+        "days": days,
+        "dates": dates,
+        "series": series,
+        "exercises": exercises,
+        "total_kg": round(sum(tonnage_by_day.values()), 1),
+        "sessions": len(dates),
+    }
