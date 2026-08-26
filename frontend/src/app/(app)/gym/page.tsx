@@ -118,7 +118,15 @@ export default async function GymPage({
                                   {num(cell.tonnage_kg, 0)} kg
                                 </div>
                               ) : null}
-                              <div className="text-xs text-ink-dim">{cell.sets.join(" ")}</div>
+                              {/* One set per line: a ramp reads down the cell
+                                  the way it was performed, and runs of the
+                                  same weight stay countable at a glance
+                                  instead of blurring into one another. */}
+                              {cell.sets.map((set, j) => (
+                                <div key={j} className="text-xs text-ink-dim">
+                                  {set}
+                                </div>
+                              ))}
                             </>
                           )}
                         </td>
