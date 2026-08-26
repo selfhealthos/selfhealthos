@@ -40,6 +40,8 @@ from .schemas import (
     HealthEntriesDayOut,
     HealthEntryDeleteOut,
     HealthEntrySyncIn,
+    HealthEntryUpdateIn,
+    HealthEntryUpdateOut,
     HealthExchangeIn,
     HealthFitnessOut,
     HealthGutOut,
@@ -126,6 +128,20 @@ def get_entries(request, on: date | None = None):
 def delete_entry(request, entry_type: str, entry_id: UUID):
     services.delete_entry(request.auth, entry_type=entry_type, entry_id=entry_id)
     return HealthEntryDeleteOut(id=entry_id)
+
+
+@router.patch(
+    "/entries/{entry_type}/{entry_id}",
+    response=HealthEntryUpdateOut,
+    summary="Correct one entry's fields, its time, or both",
+    operation_id="updateHealthEntry",
+)
+def update_entry(request, entry_type: str, entry_id: UUID, payload: HealthEntryUpdateIn):
+    data = payload.dict(exclude_unset=True)
+    at = data.pop("at", None)
+    return services.update_entry(
+        request.auth, entry_type=entry_type, entry_id=entry_id, at=at, fields=data
+    )
 
 
 @router.get(

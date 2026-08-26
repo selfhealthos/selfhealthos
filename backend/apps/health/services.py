@@ -1753,6 +1753,116 @@ def delete_entry(user, *, entry_type: str, entry_id) -> None:
     rollups.rebuild(user, entry.local_date, entry.local_date)
 
 
+#: What each timeline type lets you change, beyond the timestamp every
+#: editable type shares. A type absent from this map cannot be edited at all:
+#:
+#: - `gym` is one card standing for many `GymSet` rows, so "edit this entry"
+#:   has no single row to mean (its delete fans out for the same reason).
+#: - `doc` and `fitness_test` are captured elsewhere and have no hand-typed
+#:   field worth correcting from a timeline card.
+#:
+#: An empty tuple means datetime-only: the fields came from a device or a
+#: dedicated recorder, and the correction actually wanted here is the clock.
+_ENTRY_EDITABLE: dict[str, tuple[str, ...]] = {
+    "diet": ("name",),
+    "note": ("title", "content"),
+    "gut": ("bristol", "notes"),
+    "vitals_bp": ("systolic", "diastolic", "notes"),
+    "vitals_weight": ("weight_kg", "notes"),
+    "exercise": (),
+    "body": (),
+}
+
+
+def _clean_entry_field(entry_type: str, key: str, value):
+    """One edited field, validated the same way `log_entry` validates a new one.
+
+    A correction has to clear the bar the original creation did, or editing
+    becomes the way to get a Bristol 9 or a negative weight into a record that
+    refuses them at every other door.
+    """
+    if key == "bristol":
+        if value is None or not 1 <= int(value) <= 7:
+            raise DomainError("A gut entry needs a Bristol value from 1 to 7.")
+        return int(value)
+    if key in ("systolic", "diastolic"):
+        if value is None or not 0 < int(value) < 400:
+            raise DomainError("Blood pressure readings must be positive and realistic.")
+        return int(value)
+    if key == "weight_kg":
+        if value is None or not 0 < float(value) < 1000:
+            raise DomainError("A weight entry needs a positive value in kilograms.")
+        return float(value)
+    if key == "name":
+        text = (value or "").strip()
+        if not text:
+            raise DomainError("A food entry needs a name.")
+        return text[:255]
+    if key == "title":
+        return (value or "").strip()[:60]
+    if key in ("content", "notes"):
+        return value or ""
+    raise DomainError(f"{key!r} is not editable on a {entry_type} entry.")
+
+
+def update_entry(user, *, entry_type: str, entry_id, at=None, fields: dict | None = None) -> dict:
+    """Correct one row on the entries timeline: its fields, its time, or both.
+
+    **`local_date` is stored, not computed** (see `OccurredEntry`), so moving
+    `occurred_at` across a midnight has to move `local_date` with it. Setting
+    only the instant leaves the row filed under the day it was first logged,
+    where it stays invisible to every day-scoped query and to the day view the
+    person just corrected it on - the single trap this function exists around.
+
+    The rollup is rebuilt across *both* days when the date moves. Rebuilding
+    only the new one leaves the old day still counting an entry that is no
+    longer on it.
+
+    `client_updated_at` is bumped for rows that came from a phone, so this
+    edit is the newest write in the last-write-wins ordering `devicesync.merge`
+    applies. Without it a stale copy still sitting in the phone's queue would
+    quietly win and undo the correction.
+    """
+    from . import rollups
+
+    editable = _ENTRY_EDITABLE.get(entry_type)
+    if editable is None:
+        raise NotFound(f"a {entry_type} entry cannot be edited")
+
+    model = _ENTRY_MODELS[entry_type]
+    entry = model.objects.filter(pk=entry_id, created_by=user, deleted_at__isnull=True).first()
+    if entry is None:
+        raise NotFound("entry not found")
+
+    supplied = {k: v for k, v in (fields or {}).items() if v is not None}
+    unknown = set(supplied) - set(editable)
+    if unknown:
+        raise DomainError(f"{', '.join(sorted(unknown))} cannot be edited on a {entry_type} entry.")
+
+    for key, value in supplied.items():
+        setattr(entry, key, _clean_entry_field(entry_type, key, value))
+
+    was_on = entry.local_date
+    if at is not None:
+        tz = timeutils.tz_for(user)
+        entry.occurred_at = at
+        entry.local_date = timeutils.local_date_of(at, tz)
+
+    if entry.client_id:
+        entry.client_updated_at = _utcnow()
+    entry.save()
+
+    rollups.rebuild(user, min(was_on, entry.local_date), max(was_on, entry.local_date))
+    record_event(verb=f"health.{entry_type}.edited", actor=user, target=entry)
+
+    return {
+        "id": entry.id,
+        "type": entry_type,
+        "at": entry.occurred_at,
+        "local_date": entry.local_date,
+    }
+
+
 # --------------------------------------------------------------------------
 # Office days
 # --------------------------------------------------------------------------

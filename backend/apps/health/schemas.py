@@ -550,6 +550,39 @@ class HealthEntryDeleteOut(Schema):
     deleted: bool = True
 
 
+class HealthEntryUpdateIn(Schema):
+    """One correction to a timeline row. Every field is optional; only what is
+    sent is changed.
+
+    Written out per field rather than taken as a loose dict, so the generated
+    TypeScript names what each type actually accepts. Which of these a given
+    type allows is `services._ENTRY_EDITABLE` - sending one it does not is an
+    error, not a silent no-op.
+    """
+
+    #: The moment it happened. Moving this across midnight re-files the entry
+    #: on the new day, because `local_date` is stored rather than computed.
+    at: datetime | None = None
+    name: str | None = None
+    title: str | None = None
+    content: str | None = None
+    bristol: int | None = None
+    notes: str | None = None
+    systolic: int | None = None
+    diastolic: int | None = None
+    weight_kg: float | None = None
+
+
+class HealthEntryUpdateOut(Schema):
+    id: UUID
+    type: str
+    at: datetime
+    #: Echoed back because it may have moved: a caller that edited only the
+    #: time still needs to know which day the row now belongs to.
+    local_date: date
+    updated: bool = True
+
+
 # -- gym --------------------------------------------------------------------
 
 
