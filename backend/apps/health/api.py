@@ -14,7 +14,6 @@ from __future__ import annotations
 from datetime import date, timedelta
 from uuid import UUID
 
-from django.conf import settings
 from ninja import File, Form, Router, Status
 from ninja.files import UploadedFile
 
@@ -672,7 +671,9 @@ def authorize_connection(request, provider: str):
     client component - a 302 here would be followed by the fetch and land the
     provider's HTML in a JSON parser.
     """
-    url = connections.authorize(request.auth, provider, redirect_uri=settings.FITBIT_REDIRECT_URI)
+    url = connections.authorize(
+        request.auth, provider, redirect_uri=connections.redirect_uri_for(provider)
+    )
     return HealthAuthorizeOut(authorize_url=url)
 
 

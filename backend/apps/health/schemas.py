@@ -1237,8 +1237,7 @@ class HealthSyncQueued(Schema):
 
 
 def connection_to_schema(connection) -> HealthConnectionOut:
-    from django.conf import settings
-
+    from . import connections
     from .models import Connection
 
     return HealthConnectionOut(
@@ -1248,7 +1247,7 @@ def connection_to_schema(connection) -> HealthConnectionOut:
         configured=connection.is_configured,
         connected=connection.is_connected,
         client_id=connection.client_id,
-        redirect_uri=settings.FITBIT_REDIRECT_URI,
+        redirect_uri=connections.redirect_uri_for(connection.provider),
         scopes=list(connection.scopes or []),
         connected_at=connection.connected_at,
         last_sync_at=connection.last_sync_at,

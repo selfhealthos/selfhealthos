@@ -150,10 +150,18 @@ def test_connections_are_private_to_their_owner(alex, sam, client_for):
     mine = client_for(alex).get("/api/v1/health/connections").json()
     theirs = client_for(sam).get("/api/v1/health/connections").json()
 
-    assert [c["configured"] for c in mine] == [True]
+    # Keyed by provider rather than by position: every supported provider gets
+    # a row whether or not it is set up, so a list indexed by position breaks
+    # every time one is added rather than when ownership actually leaks.
+    mine_by_provider = {c["provider"]: c for c in mine}
+    theirs_by_provider = {c["provider"]: c for c in theirs}
+
+    assert mine_by_provider["fitbit"]["configured"] is True
     # Sam sees the provider offered, but nothing of Alex's registration.
-    assert [c["configured"] for c in theirs] == [False]
-    assert theirs[0]["client_id"] == ""
+    assert theirs_by_provider["fitbit"]["configured"] is False
+    assert theirs_by_provider["fitbit"]["client_id"] == ""
+    # And nobody's registration leaks through any other provider's row either.
+    assert not any(c["configured"] for c in theirs)
 
 
 # --------------------------------------------------------------------------

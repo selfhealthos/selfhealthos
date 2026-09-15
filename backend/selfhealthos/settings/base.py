@@ -188,6 +188,14 @@ CREDENTIAL_ENCRYPTION_KEY = env("CREDENTIAL_ENCRYPTION_KEY", default="")
 # necessarily a public hostname.
 FITBIT_REDIRECT_URI = env("FITBIT_REDIRECT_URI", default=f"{SITE_URL}/fitbit/callback")
 
+# Withings is the same arrangement with one extra constraint: its dashboard
+# only accepts an **https** callback, where Fitbit's tolerates more. On a LAN
+# box with no public certificate that means compose.tls.yaml (or your own
+# proxy) is a prerequisite for connecting Withings at all - see the deployment
+# section of CLAUDE.md. Withings never fetches this URL either; the https is
+# demanded at registration time, not at redirect time.
+WITHINGS_REDIRECT_URI = env("WITHINGS_REDIRECT_URI", default=f"{SITE_URL}/withings/callback")
+
 # --- Logging -------------------------------------------------------------
 
 LOG_LEVEL = env("DJANGO_LOG_LEVEL")

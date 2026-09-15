@@ -29,11 +29,14 @@ from apps.core.exceptions import DomainError, NotFound
 from apps.core.services import record_event
 
 from .models import Connection
-from .providers import fitbit
+from .providers import fitbit, withings
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = {Connection.Provider.FITBIT: fitbit}
+PROVIDERS = {
+    Connection.Provider.FITBIT: fitbit,
+    Connection.Provider.WITHINGS: withings,
+}
 
 #: How long the person has to finish approving at the provider. Long enough to
 #: find a password, short enough that an abandoned flow cannot be resumed by
@@ -63,6 +66,25 @@ def _module(provider: str):
     if module is None:
         raise UnknownProvider(f"{provider!r} is not a provider this portal supports.")
     return module
+
+
+def redirect_uri_for(provider: str) -> str:
+    """The exact callback string this server will send for one provider.
+
+    Per provider, not one shared URL: each provider's own app registration
+    stores a callback and matches it byte for byte, so two providers sharing a
+    path would both have to be registered against it and the callback handler
+    would have no way to tell which flow came back.
+
+    Settable per provider (`FITBIT_REDIRECT_URI`, `WITHINGS_REDIRECT_URI`) and
+    otherwise derived from `SITE_URL`, so the common case needs no config while
+    an operator behind a proxy that rewrites paths can still override it.
+    """
+    from django.conf import settings
+
+    _module(provider)
+    override = getattr(settings, f"{provider.upper()}_REDIRECT_URI", "")
+    return override or f"{settings.SITE_URL.rstrip('/')}/{provider}/callback"
 
 
 # --------------------------------------------------------------------------

@@ -599,6 +599,7 @@ class RawIngest(BaseModel):
     class Source(models.TextChoices):
         PHONE = "phone", "Phone sync"
         FITBIT = "fitbit", "Fitbit API"
+        WITHINGS = "withings", "Withings API"
         IMPORT = "import", "File import"
 
     source = models.CharField(max_length=16, choices=Source, db_index=True)
@@ -643,6 +644,7 @@ class Connection(BaseModel):
 
     class Provider(models.TextChoices):
         FITBIT = "fitbit", "Fitbit"
+        WITHINGS = "withings", "Withings"
 
     class Status(models.TextChoices):
         #: Credentials saved, no OAuth grant yet.
