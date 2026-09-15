@@ -140,8 +140,25 @@ export const LONG_RANGES = [
   { days: 90, label: "90d" },
   { days: 365, label: "1y" },
   { days: 730, label: "2y" },
-  { days: 3650, label: "All" },
+  { days: 1825, label: "5y" },
+  // "All" has to outrun the archive, not approximate it. At 3650 it silently
+  // cropped the first three years of a Withings history that starts in 2013 —
+  // and a cropped chart looks exactly like a complete one.
+  { days: 36500, label: "All" },
 ] as const;
+
+/**
+ * How a range reads in a subtitle.
+ *
+ * "over 36500 days" is the literal truth and a ridiculous thing to print, so
+ * an all-time range describes itself by what the data actually covers rather
+ * than by the window that was asked for.
+ */
+export function rangeLabel(days: number, firstDate?: string | null): string {
+  if (days < 365) return `over ${days} days`;
+  if (days <= 1825) return `over ${Math.round(days / 365)} years`;
+  return firstDate ? `since ${firstDate.slice(0, 4)}` : "over all time";
+}
 
 // -- formatting -------------------------------------------------------------
 

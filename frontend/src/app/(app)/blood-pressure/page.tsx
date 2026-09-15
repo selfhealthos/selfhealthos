@@ -2,7 +2,17 @@ import { serverGet } from "@/lib/api/server";
 import type { HealthTrend } from "@/lib/api/types";
 
 import { LineChart } from "../charts";
-import { band, Card, LONG_RANGES, num, PageHeader, RangeTabs, shortDate, Stat } from "../ui";
+import {
+  band,
+  Card,
+  LONG_RANGES,
+  num,
+  PageHeader,
+  RangeTabs,
+  rangeLabel,
+  shortDate,
+  Stat,
+} from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +61,10 @@ export default async function BloodPressurePage({
   const lastSys = latest(systolic?.points ?? []);
   const lastDia = latest(diastolic?.points ?? []);
 
+  // Oldest reading actually present, so an all-time range can describe itself
+  // by the history it covers rather than by the window that was requested.
+  const firstReadingDate = systolic?.points?.[0]?.date ?? null;
+
   // Paired readings, newest first, for the table under the charts.
   const diaByDate = new Map((diastolic?.points ?? []).map((p) => [p.date, p.value]));
   const readings = (systolic?.points ?? [])
@@ -61,7 +75,7 @@ export default async function BloodPressurePage({
     <>
       <PageHeader
         title="Blood pressure"
-        subtitle={`Systolic and diastolic over ${days} days, against the clinical thresholds.`}
+        subtitle={`Systolic and diastolic ${rangeLabel(days, firstReadingDate)}, against the clinical thresholds.`}
       >
         <RangeTabs basePath="/blood-pressure" current={days} options={LONG_RANGES} />
       </PageHeader>
@@ -84,12 +98,12 @@ export default async function BloodPressurePage({
               ? `${Math.round(systolic.mean)}/${Math.round(diastolic.mean)}`
               : null
           }
-          sub={`mmHg over ${days} days`}
+          sub={`mmHg ${rangeLabel(days, firstReadingDate)}`}
         />
         <Stat
           label="Readings"
           value={readings.length || null}
-          sub={`in the last ${days} days`}
+          sub={rangeLabel(days, firstReadingDate)}
         />
         <Stat
           label="Average pulse pressure"

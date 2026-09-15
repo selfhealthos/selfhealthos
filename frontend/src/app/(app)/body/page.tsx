@@ -2,7 +2,17 @@ import { serverGet } from "@/lib/api/server";
 import type { HealthBody } from "@/lib/api/types";
 
 import { LineChart } from "../charts";
-import { Card, Empty, LONG_RANGES, num, PageHeader, RangeTabs, shortDate, Stat } from "../ui";
+import {
+  Card,
+  Empty,
+  LONG_RANGES,
+  num,
+  PageHeader,
+  RangeTabs,
+  rangeLabel,
+  shortDate,
+  Stat,
+} from "../ui";
 import { BandLegend, BodyTable } from "./BodyTable";
 import { RecordMeasurement, RecordProfile, RecordWeight } from "./RecordBody";
 
@@ -104,7 +114,7 @@ export default async function BodyPage({
     <>
       <PageHeader
         title="Body"
-        subtitle={`Weight, BMI, waist and the waist-to-height ratio over ${days} days.`}
+        subtitle={`Weight, BMI, waist and the waist-to-height ratio ${rangeLabel(days, weightPoints[0]?.date)}.`}
       >
         <RangeTabs basePath="/body" current={days} options={LONG_RANGES} />
       </PageHeader>

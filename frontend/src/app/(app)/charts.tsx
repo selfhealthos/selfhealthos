@@ -106,6 +106,127 @@ function monthLabel(iso: string): string {
   });
 }
 
+function isoOf(day: number): string {
+  return new Date(day * 86_400_000).toISOString().slice(0, 10);
+}
+
+export type TimeTick = { day: number; label: string };
+
+/**
+ * Ticks along the time axis, at a granularity the span can carry.
+ *
+ * The axis used to be two labels - the first date and the last, both as
+ * "31 Aug". Over a thirteen-year archive that is worse than no axis at all: it
+ * reads as a fortnight. So the granularity follows the span, and **the year
+ * appears as soon as the span crosses one**, because "Mar" is ambiguous the
+ * moment two Marches are on screen.
+ */
+export function timeTicks(minDay: number, maxDay: number, target = 6): TimeTick[] {
+  const span = maxDay - minDay || 1;
+  const years = span / 365.25;
+  const out: TimeTick[] = [];
+  const from = new Date(minDay * 86_400_000);
+  const to = new Date(maxDay * 86_400_000);
+
+  if (years >= 2.5) {
+    const step = Math.max(1, Math.ceil(years / target));
+    for (let y = from.getUTCFullYear(); y <= to.getUTCFullYear(); y += step) {
+      const day = Date.UTC(y, 0, 1) / 86_400_000;
+      if (day >= minDay && day <= maxDay) out.push({ day, label: String(y) });
+    }
+    // A span of a few years can start just after January: without this the
+    // first tick sits a long way in and the left edge is unlabelled.
+    if (out.length === 0 || out[0]!.day - minDay > span / target) {
+      out.unshift({ day: minDay, label: String(from.getUTCFullYear()) });
+    }
+    return out;
+  }
+
+  if (span >= 120) {
+    const step = Math.max(1, Math.ceil(span / 30.44 / target));
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
+    while (cursor.getTime() / 86_400_000 <= maxDay) {
+      const day = cursor.getTime() / 86_400_000;
+      if (day >= minDay) {
+        out.push({
+          day,
+          label: cursor.toLocaleDateString("en-AU", {
+            month: "short",
+            // Only when the window straddles a year boundary. Inside one year
+            // the repeated "25" is noise on every label.
+            ...(from.getUTCFullYear() === to.getUTCFullYear() ? {} : { year: "2-digit" }),
+            timeZone: "UTC",
+          }),
+        });
+      }
+      cursor.setUTCMonth(cursor.getUTCMonth() + step);
+    }
+    return out;
+  }
+
+  const step = Math.max(1, Math.round(span / target));
+  for (let day = minDay; day <= maxDay; day += step) out.push({ day, label: monthLabel(isoOf(day)) });
+  return out;
+}
+
+/**
+ * Collapse a dense series into fixed-width buckets of means.
+ *
+ * Thirteen years of weigh-ins is ~560 points across ~620 pixels, and most of
+ * them are clusters separated by days. `segments` then - correctly - refuses to
+ * join anything more than three days apart, and the result is several hundred
+ * two-point fragments, each drawn as a near-vertical stroke. The picture is a
+ * field of spikes, and the trend it is supposed to show is invisible.
+ *
+ * Bucketing fixes the cause rather than the symptom. It does **not** paper over
+ * the gaps: buckets exist only where readings do, so a year nobody stood on the
+ * scales stays empty and `segments` still breaks the line across it.
+ *
+ * The mean is a summary and is labelled as one by the caller. It is not the
+ * rule the daily metric uses - `rollups` takes the last reading of the day, for
+ * reasons that matter at day resolution and stop mattering once a mark is a
+ * month wide.
+ */
+export function resample(
+  points: SeriesPoint[],
+  maxPoints: number,
+): { points: SeriesPoint[]; bucketDays: number } {
+  if (points.length <= maxPoints || maxPoints < 1) return { points, bucketDays: 0 };
+
+  const days = points.map((p) => dayNumber(p.date));
+  const min = Math.min(...days);
+  const span = Math.max(...days) - min || 1;
+  const bucketDays = Math.max(1, Math.ceil(span / maxPoints));
+
+  const buckets = new Map<number, { dayTotal: number; valueTotal: number; n: number }>();
+  points.forEach((point, i) => {
+    const key = Math.floor((days[i]! - min) / bucketDays);
+    const bucket = buckets.get(key) ?? { dayTotal: 0, valueTotal: 0, n: 0 };
+    bucket.dayTotal += days[i]!;
+    bucket.valueTotal += point.value;
+    bucket.n += 1;
+    buckets.set(key, bucket);
+  });
+
+  const out = [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, b]) => ({
+      date: isoOf(Math.round(b.dayTotal / b.n)),
+      value: b.valueTotal / b.n,
+    }));
+
+  return { points: out, bucketDays };
+}
+
+/** How wide a bucket is, as a person would say it. */
+export function bucketLabel(bucketDays: number): string {
+  if (bucketDays <= 1) return "daily";
+  if (bucketDays <= 10) return `${bucketDays}-day averages`;
+  if (bucketDays <= 45) return "monthly averages";
+  if (bucketDays <= 130) return "quarterly averages";
+  return "yearly averages";
+}
+
 /**
  * Split a series wherever it stops being continuous.
  *
@@ -194,8 +315,8 @@ export function LineChart({
    */
   normalBand?: { from: number; to: number; label: string; axis?: Axis };
 }) {
-  const all = series.flatMap((s) => s.points);
-  if (all.length === 0) {
+  const rawAll = series.flatMap((s) => s.points);
+  if (rawAll.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-600">
         Nothing recorded in this window.
@@ -203,12 +324,28 @@ export function LineChart({
     );
   }
 
+  const hasRight = series.some((s) => s.axis === "right");
+  // A right axis needs room for its tick labels *and* the endpoint labels that
+  // would otherwise be stacked on top of them. Local rather than a change to
+  // the exported PAD, which every other chart on these pages is laid out from.
+  const padRight = hasRight ? 68 : PAD.right;
+  const plotW = W - PAD.left - padRight;
+
+  // One mark per ~3px at most. Denser than that is not more information, it is
+  // the spike field described on `resample`.
+  const maxPoints = Math.max(24, Math.floor(plotW / 3));
+  const drawn = series.map((s) => {
+    const { points, bucketDays } = resample(s.points, maxPoints);
+    return { ...s, points, bucketDays };
+  });
+  const bucketDays = Math.max(0, ...drawn.map((s) => s.bucketDays));
+
+  const all = drawn.flatMap((s) => s.points);
   const days = all.map((p) => dayNumber(p.date));
   const xMin = Math.min(...days);
   const xMax = Math.max(...days);
   const xSpan = xMax - xMin || 1;
-
-  const hasRight = series.some((s) => s.axis === "right");
+  const xTimeTicks = timeTicks(xMin, xMax);
 
   /**
    * One axis's domain, from the series measured against it.
@@ -219,7 +356,7 @@ export function LineChart({
    * about the numbers.
    */
   const domainFor = (axis: Axis): [number, number] => {
-    const mine = series.filter((s) => (s.axis ?? "left") === axis);
+    const mine = drawn.filter((s) => (s.axis ?? "left") === axis);
     const candidates = [
       ...mine.flatMap((s) => s.points.map((p) => p.value)),
       ...((reference?.axis ?? "left") === axis && reference ? [reference.value] : []),
@@ -240,7 +377,8 @@ export function LineChart({
   const leftSpan = leftMax - leftMin || 1;
   const rightSpan = rightMax - rightMin || 1;
 
-  const x = (iso: string) => PAD.left + ((dayNumber(iso) - xMin) / xSpan) * PLOT_W;
+  const x = (iso: string) => PAD.left + ((dayNumber(iso) - xMin) / xSpan) * plotW;
+  const xOfDay = (day: number) => PAD.left + ((day - xMin) / xSpan) * plotW;
   const yOn = (value: number, axis: Axis = "left") =>
     axis === "right"
       ? PAD.top + PLOT_H - ((value - rightMin) / rightSpan) * PLOT_H
@@ -254,10 +392,60 @@ export function LineChart({
   const firstDate = all.reduce((a, b) => (a.date < b.date ? a : b)).date;
   const lastDate = all.reduce((a, b) => (a.date > b.date ? a : b)).date;
 
+  /**
+   * Where each series' endpoint label sits, nudged apart where they collide.
+   *
+   * Weight and BMI are one measurement on two rulers, so their endpoints land
+   * at almost the same height by construction - and two labels at the same
+   * height print straight over each other into an unreadable blob. Resolved
+   * here rather than per series, because avoiding a collision needs to know
+   * about the labels already placed.
+   */
+  const LABEL_GAP = 12;
+  const placedLabelY: number[] = [];
+  const endpointLabelY = drawn.map((s) => {
+    const last = s.points[s.points.length - 1];
+    if (!last) return null;
+    let at = yOn(last.value, s.axis) - (hasRight ? 7 : 0);
+    while (placedLabelY.some((other) => Math.abs(other - at) < LABEL_GAP)) at -= LABEL_GAP;
+    placedLabelY.push(at);
+    return at;
+  });
+
+  // Hover columns: every distinct drawn date, each carrying all series' values.
+  // Capped so a dense chart does not ship two thousand rects for tooltips
+  // nobody can aim at anyway.
+  const HOVER_MAX = 160;
+  const hoverDates = [...new Set(all.map((p) => p.date))].sort();
+  const hoverStride = Math.ceil(hoverDates.length / HOVER_MAX) || 1;
+  const hoverColumns = hoverDates
+    .filter((_, i) => i % hoverStride === 0)
+    .map((date, i, kept) => {
+      const next = kept[i + 1];
+      const left = x(date);
+      const width = Math.max(4, (next ? x(next) : W - padRight) - left);
+      const values = drawn
+        .map((s) => {
+          const hit = s.points.find((p) => p.date === date);
+          return hit
+            ? `${s.label}: ${tickLabel(hit.value)}${s.unit ?? unit ? ` ${s.unit ?? unit}` : ""}`
+            : null;
+        })
+        .filter(Boolean);
+      return { date, x: left, width, title: `${date}\n${values.join("\n")}` };
+    });
+
   return (
     <>
       {series.length > 1 && (
         <Legend items={series.map((s, i) => ({ label: s.label, color: slot(i) }))} />
+      )}
+      {/* Said out loud, never implied. A reader who thinks these marks are
+          individual weigh-ins will read the smoothness as stability. */}
+      {bucketDays > 1 && (
+        <p className="mb-1 text-xs text-slate-400 dark:text-slate-500">
+          {`${bucketLabel(bucketDays)} of ${rawAll.length.toLocaleString()} readings — pick a shorter range for individual ones.`}
+        </p>
       )}
       <svg
         viewBox={`0 0 ${W} ${height}`}
@@ -273,14 +461,14 @@ export function LineChart({
             <rect
               x={PAD.left}
               y={yOn(Math.max(normalBand.from, normalBand.to), normalBand.axis)}
-              width={PLOT_W}
+              width={plotW}
               height={Math.abs(
                 yOn(normalBand.from, normalBand.axis) - yOn(normalBand.to, normalBand.axis),
               )}
               fill="var(--viz-normal-band)"
             />
             <text
-              x={W - PAD.right - 4}
+              x={W - padRight - 4}
               y={yOn(Math.max(normalBand.from, normalBand.to), normalBand.axis) + 11}
               textAnchor="end"
               fontSize={10}
@@ -296,7 +484,7 @@ export function LineChart({
           <g key={tick}>
             <line
               x1={PAD.left}
-              x2={W - PAD.right}
+              x2={W - padRight}
               y1={y(tick)}
               y2={y(tick)}
               stroke="var(--viz-grid)"
@@ -324,8 +512,8 @@ export function LineChart({
         {rightTicks.map((tick) => (
           <g key={`r${tick}`}>
             <line
-              x1={W - PAD.right}
-              x2={W - PAD.right + 4}
+              x1={W - padRight}
+              x2={W - padRight + 4}
               y1={yOn(tick, "right")}
               y2={yOn(tick, "right")}
               stroke="var(--viz-axis)"
@@ -333,7 +521,7 @@ export function LineChart({
               vectorEffect="non-scaling-stroke"
             />
             <text
-              x={W - PAD.right + 7}
+              x={W - padRight + 7}
               y={yOn(tick, "right")}
               dominantBaseline="middle"
               fontSize={11}
@@ -346,7 +534,7 @@ export function LineChart({
         ))}
         {hasRight && rightAxisLabel && (
           <text
-            x={W - PAD.right + 7}
+            x={W - padRight + 7}
             y={PAD.top - 2}
             fontSize={10}
             fill="var(--viz-muted)"
@@ -359,7 +547,7 @@ export function LineChart({
           <>
             <line
               x1={PAD.left}
-              x2={W - PAD.right}
+              x2={W - padRight}
               y1={yOn(reference.value, reference.axis)}
               y2={yOn(reference.value, reference.axis)}
               stroke="var(--viz-axis)"
@@ -368,7 +556,7 @@ export function LineChart({
               vectorEffect="non-scaling-stroke"
             />
             <text
-              x={W - PAD.right + 4}
+              x={W - padRight + 4}
               y={yOn(reference.value, reference.axis)}
               dominantBaseline="middle"
               fontSize={10}
@@ -379,26 +567,43 @@ export function LineChart({
           </>
         )}
 
-        {series.map((s, index) => {
+        {drawn.map((s, index) => {
           const colour = slot(index);
           const last = s.points[s.points.length - 1];
           const ys = (value: number) => yOn(value, s.axis);
           return (
             <g key={s.label}>
-              {segments(s.points).map((run, runIndex) => (
-                <path
-                  key={runIndex}
-                  d={run
-                    .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)},${ys(p.value).toFixed(1)}`)
-                    .join(" ")}
-                  fill="none"
-                  stroke={colour}
-                  strokeWidth={2}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
+              {segments(s.points).map((run, runIndex) =>
+                // A run of one is a reading with no neighbour close enough to
+                // join. A path through a single point draws nothing at all, so
+                // an isolated weigh-in used to be invisible - which is how a
+                // sparse year came to look like an empty one.
+                run.length === 1 ? (
+                  <circle
+                    key={runIndex}
+                    cx={x(run[0]!.date)}
+                    cy={ys(run[0]!.value)}
+                    r={2}
+                    fill={colour}
+                  />
+                ) : (
+                  <path
+                    key={runIndex}
+                    d={run
+                      .map(
+                        (p, i) =>
+                          `${i === 0 ? "M" : "L"}${x(p.date).toFixed(1)},${ys(p.value).toFixed(1)}`,
+                      )
+                      .join(" ")}
+                    fill="none"
+                    stroke={colour}
+                    strokeWidth={2}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ),
+              )}
               {/* An end marker with a surface ring, so it stays legible where
                   two series converge at the right edge. */}
               {last && (
@@ -413,12 +618,22 @@ export function LineChart({
                   <title>{`${s.label}: ${last.value.toLocaleString()}${s.unit ?? unit ? ` ${s.unit ?? unit}` : ""} on ${last.date}`}</title>
                 </circle>
               )}
-              {/* Direct label on the endpoint only. A number on every point is
-                  chaos and goes unread; the axis and the table carry the rest. */}
-              {last && series.length <= 4 && (
+              {/* Direct label on the endpoint only, and only on a chart with a
+                  single axis. A number on every point is chaos and goes unread;
+                  the axis and the table carry the rest.
+
+                  Suppressed entirely when a right axis exists. There is nowhere
+                  good for it to go: the margin is where that axis prints its own
+                  tick labels, and inside the plot two series that are the same
+                  measurement on two rulers end up a few pixels apart, over the
+                  normal band, needing a halo heavy enough to smear 11px glyphs.
+                  Nothing is lost - both axes are drawn, the endpoint dot carries
+                  a `<title>`, and the page's stat row already shows each current
+                  value in large type. */}
+              {last && !hasRight && drawn.length <= 4 && (
                 <text
                   x={x(last.date) + 8}
-                  y={ys(last.value)}
+                  y={endpointLabelY[index] ?? ys(last.value)}
                   dominantBaseline="middle"
                   fontSize={11}
                   fill="var(--viz-muted)"
@@ -433,25 +648,70 @@ export function LineChart({
 
         <line
           x1={PAD.left}
-          x2={W - PAD.right}
+          x2={W - padRight}
           y1={PAD.top + PLOT_H}
           y2={PAD.top + PLOT_H}
           stroke="var(--viz-axis)"
           strokeWidth={1}
           vectorEffect="non-scaling-stroke"
         />
-        <text x={PAD.left} y={height - 6} fontSize={11} fill="var(--viz-muted)">
-          {monthLabel(firstDate)}
-        </text>
-        <text
-          x={W - PAD.right}
-          y={height - 6}
-          textAnchor="end"
-          fontSize={11}
-          fill="var(--viz-muted)"
-        >
-          {monthLabel(lastDate)}
-        </text>
+        {/* The time axis. Ticks are placed by `timeTicks`, which picks years,
+            months or days from the span - so a thirteen-year archive is
+            labelled by year instead of by the two dates at its ends. */}
+        {xTimeTicks.map((tick) => {
+          const tx = xOfDay(tick.day);
+          // Clamped so the first and last labels stay inside the frame rather
+          // than being clipped by the viewBox.
+          const anchor = tx < PAD.left + 12 ? "start" : tx > W - padRight - 12 ? "end" : "middle";
+          return (
+            <g key={tick.day}>
+              <line
+                x1={tx}
+                x2={tx}
+                y1={PAD.top}
+                y2={PAD.top + PLOT_H}
+                stroke="var(--viz-grid)"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+              <line
+                x1={tx}
+                x2={tx}
+                y1={PAD.top + PLOT_H}
+                y2={PAD.top + PLOT_H + 4}
+                stroke="var(--viz-axis)"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                x={tx}
+                y={height - 6}
+                textAnchor={anchor}
+                fontSize={11}
+                fill="var(--viz-muted)"
+              >
+                {tick.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* The hover layer, last so it sits above the marks. One transparent
+            column per sampled date carrying every series' value there, which
+            is what makes the chart readable point by point without a line of
+            JavaScript - the browser draws `<title>` as a tooltip itself. */}
+        {hoverColumns.map((column) => (
+          <rect
+            key={column.date}
+            x={column.x}
+            y={PAD.top}
+            width={column.width}
+            height={PLOT_H}
+            fill="transparent"
+          >
+            <title>{column.title}</title>
+          </rect>
+        ))}
       </svg>
     </>
   );

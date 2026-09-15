@@ -2,7 +2,17 @@ import { serverGet } from "@/lib/api/server";
 import type { HealthFitness } from "@/lib/api/types";
 
 import { LineChart } from "../charts";
-import { Card, Empty, LONG_RANGES, num, PageHeader, RangeTabs, shortDate, Stat } from "../ui";
+import {
+  Card,
+  Empty,
+  LONG_RANGES,
+  num,
+  PageHeader,
+  RangeTabs,
+  rangeLabel,
+  shortDate,
+  Stat,
+} from "../ui";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +53,9 @@ export default async function FitnessPage({
   const tests = data.tests.slice().reverse();
   const latest = data.tests[0];
 
+  // Oldest test actually present; see the same variable on the body page.
+  const firstTestDate = tests[0]?.local_date ?? null;
+
   const series = (key: string) =>
     tests
       .filter((row) => row[key as keyof typeof row] !== null && row[key as keyof typeof row] !== undefined)
@@ -55,7 +68,7 @@ export default async function FitnessPage({
     <>
       <PageHeader
         title="Fitness tests"
-        subtitle={`${data.tests.length} self-tests over ${days} days. Higher is better for every one of them.`}
+        subtitle={`${data.tests.length} self-tests ${rangeLabel(days, firstTestDate)}. Higher is better for every one of them.`}
       >
         <RangeTabs basePath="/fitness" current={days} options={LONG_RANGES} />
       </PageHeader>
