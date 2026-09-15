@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { apiSend } from "@/lib/api/browser";
-import type { HealthAuthorize, HealthConnection } from "@/lib/api/types";
+import type { HealthAuthorize, HealthConnection, HealthSyncQueued } from "@/lib/api/types";
 
 // Wearable connections. One card per provider, whether it is set up or not.
 //
@@ -39,6 +39,12 @@ const SETUP_STEPS: Record<string, { url: string; steps: string[]; note?: string 
 // What each provider actually brings in, so a card is not a mystery before it
 // is set up. Deliberately concrete: Withings scales differ enormously in what
 // they measure, and only weight is common to all of them.
+//: Matches `connections.MAX_SYNC_DAYS` on the server, which clamps the window
+//: for every provider. Anything longer is a backfill and belongs in a
+//: management command, where it can report progress and be resumed —
+//: `backfill_fitbit`, or `import_withings` for a Withings data export.
+const MAX_SYNC_DAYS = 30;
+
 const PROVIDES: Record<string, string> = {
   fitbit: "Activity, heart rate, sleep and recovery.",
   withings: "Weight from a Withings scale, plus body fat and blood pressure where your hardware records them.",
@@ -62,6 +68,7 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [syncDays, setSyncDays] = useState(7);
 
   const help = SETUP_STEPS[connection.provider];
   const provides = PROVIDES[connection.provider];
@@ -113,6 +120,20 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
       );
       // A full navigation, not router.push: the destination is the provider.
       if (result?.authorize_url) window.location.href = result.authorize_url;
+    });
+
+  const sync = () =>
+    run("sync", async () => {
+      // Queues only. The pull runs on the worker — the browser is not going to
+      // hold a request open for a backfill — so the note below says the data
+      // lands shortly rather than pretending this finished it.
+      const result = await apiSend<HealthSyncQueued>(
+        `/health/connections/${connection.provider}/sync?days=${syncDays}`,
+      );
+      setNote(result?.message ?? "Syncing in the background.");
+      // Picks up last_sync_at and last_sync_error; the data itself arrives when
+      // the worker finishes.
+      router.refresh();
     });
 
   const disconnect = () =>
@@ -236,13 +257,50 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
         )}
 
         {connection.connected && (
-          <button
-            onClick={disconnect}
-            disabled={busy !== null}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-ink transition hover:border-critical hover:text-critical disabled:opacity-40"
-          >
-            {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
-          </button>
+          <>
+            {/* The window is a field rather than a fixed default because the
+                two things people press this for want different numbers: "did
+                last night land yet" is a day or two, "fill in the fortnight I
+                was away" is fourteen. */}
+            <span className="flex items-center gap-1.5 text-xs text-ink-dim">
+              <label htmlFor={`sync-days-${connection.provider}`}>Last</label>
+              <input
+                id={`sync-days-${connection.provider}`}
+                type="number"
+                min={1}
+                max={MAX_SYNC_DAYS}
+                value={syncDays}
+                onChange={(event) => {
+                  // Clamped here rather than only by min/max, which browsers
+                  // enforce on the spinner and not on typing.
+                  const parsed = Number(event.target.value);
+                  setSyncDays(
+                    Number.isFinite(parsed)
+                      ? Math.min(MAX_SYNC_DAYS, Math.max(1, parsed))
+                      : 7,
+                  );
+                }}
+                className="w-14 rounded-lg border border-border bg-bg px-2 py-2 text-right text-sm tabular-nums text-ink outline-none focus:border-brand-blue"
+              />
+              <span>days</span>
+            </span>
+
+            <button
+              onClick={sync}
+              disabled={busy !== null}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-ink transition hover:border-brand-blue disabled:opacity-40"
+            >
+              {busy === "sync" ? "Starting…" : "Sync now"}
+            </button>
+
+            <button
+              onClick={disconnect}
+              disabled={busy !== null}
+              className="rounded-lg border border-border px-4 py-2 text-sm text-ink transition hover:border-critical hover:text-critical disabled:opacity-40"
+            >
+              {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
+            </button>
+          </>
         )}
       </div>
 
