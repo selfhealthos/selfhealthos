@@ -730,6 +730,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/office/report.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The same report as a CSV download
+         * @description A real URL rather than a client-side blob.
+         *
+         *     Being an ordinary authenticated GET means it works from `curl` with a
+         *     `shos_pat_` token and from a browser link with a session cookie, and that
+         *     the download survives JavaScript being off. The filename carries the window
+         *     so two exports do not land in Downloads as `report.csv` and `report (1).csv`.
+         */
+        get: operations["getHealthOfficeReportCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health/seasons/report": {
         parameters: {
             query?: never;
@@ -5228,6 +5253,26 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HealthOfficeReportOut"];
                 };
+            };
+        };
+    };
+    getHealthOfficeReportCsv: {
+        parameters: {
+            query?: {
+                days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

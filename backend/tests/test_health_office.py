@@ -153,3 +153,104 @@ def test_wfh_report_excludes_weekdays_outside_office_coverage(alex, client_for):
     assert body["days"]["wfh"] == 0
     assert body["days"]["office"] == 0
     assert body["days"]["excluded"] > 0
+
+
+# --------------------------------------------------------------------------
+# The CSV export
+# --------------------------------------------------------------------------
+
+
+def _csv_rows(text: str) -> list[list[str]]:
+    import csv
+    import io
+
+    return list(csv.reader(io.StringIO(text)))
+
+
+def test_report_csv_downloads_as_a_named_attachment(alex, client_for):
+    response = client_for(alex).get("/api/v1/health/office/report.csv?days=30")
+
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/csv")
+    # Named for the window, so two exports do not collide in Downloads.
+    assert "attachment;" in response["Content-Disposition"]
+    assert "wfh-report-" in response["Content-Disposition"]
+
+
+def test_report_csv_writes_an_empty_cell_for_a_bucket_with_no_days(alex, client_for):
+    """Absent is not zero, in the format least able to express the difference.
+
+    A metric recorded only on weekdays has no weekend mean at all. A `0` here
+    makes an unmeasured bucket look like the worst one in whatever spreadsheet
+    this is opened in - the same trap the API and the charts already avoid.
+    """
+    today = date.today()
+    weekdays = [d for d in (today - timedelta(days=n) for n in range(20)) if d.weekday() < 5][:6]
+    for on in weekdays:
+        _metric(alex, on, "steps", 5000)
+    # The newest and the oldest, so the office-day record's covered range spans
+    # every weekday above - the ones in between are then genuinely "wfh" rather
+    # than unclassifiable, which is what puts data in two buckets.
+    for on in (weekdays[0], weekdays[-1]):
+        client_for(alex).put(f"/api/v1/health/office/days/{on.isoformat()}")
+
+    response = client_for(alex).get("/api/v1/health/office/report.csv?days=30")
+    rows = _csv_rows(response.content.decode())
+
+    header = next(r for r in rows if r and r[0] == "metric")
+    steps = next(r for r in rows if r and r[0] == "steps")
+    weekend = steps[header.index("weekend")]
+    weekend_days = steps[header.index("weekend_days")]
+
+    assert weekend_days == "0"
+    assert weekend == ""
+
+
+def test_report_csv_carries_the_window_and_day_counts(alex, client_for):
+    """Numbers without their window read as all-time figures."""
+    response = client_for(alex).get("/api/v1/health/office/report.csv?days=30")
+    text = response.content.decode()
+
+    assert "Window start" in text
+    assert "Window end" in text
+    assert "wfh days" in text
+    assert "office days" in text
+
+
+def test_report_csv_matches_the_json_report(alex, client_for):
+    """One report, two formats. They must not drift."""
+    today = date.today()
+    weekdays = [d for d in (today - timedelta(days=n) for n in range(20)) if d.weekday() < 5][:6]
+    for on in weekdays:
+        _metric(alex, on, "steps", 5000)
+    for on in (weekdays[0], weekdays[-1]):
+        client_for(alex).put(f"/api/v1/health/office/days/{on.isoformat()}")
+
+    body = client_for(alex).get("/api/v1/health/office/report?days=30").json()
+    rows = _csv_rows(
+        client_for(alex).get("/api/v1/health/office/report.csv?days=30").content.decode()
+    )
+
+    header = next(r for r in rows if r and r[0] == "metric")
+    csv_metrics = [r[0] for r in rows[rows.index(header) + 1 :] if r]
+    assert csv_metrics == [m["metric"] for m in body["metrics"]]
+
+
+def test_report_csv_is_private_to_its_owner(alex, client_for, db):
+    """An export is a read of health data and is scoped like every other one."""
+    other = User.objects.create_user(username="sam", password=PASSWORD)
+    today = date.today()
+    weekday = next(d for d in (today - timedelta(days=n) for n in range(30)) if d.weekday() < 5)
+    _metric(alex, weekday, "steps", 5000)
+    client_for(alex).put(f"/api/v1/health/office/days/{weekday.isoformat()}")
+
+    text = client_for(other).get("/api/v1/health/office/report.csv?days=30").content.decode()
+    rows = _csv_rows(text)
+    header = next((r for r in rows if r and r[0] == "metric"), None)
+
+    assert header is not None
+    assert not [r for r in rows[rows.index(header) + 1 :] if r]
+
+
+def test_report_csv_requires_authentication(db):
+    assert Client().get("/api/v1/health/office/report.csv").status_code in (401, 403)

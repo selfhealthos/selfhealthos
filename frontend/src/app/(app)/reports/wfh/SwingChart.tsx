@@ -262,7 +262,7 @@ export function MetricCard({ metric }: { metric: HealthOfficeReportMetric }) {
     && metric.swing_pct < DOT_CHART_SWING_THRESHOLD;
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
+    <div className="card rounded-xl border border-border bg-surface p-4">
       <div className="mb-0.5 flex items-start justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">{metric.label}</h3>
         {avg !== null && (

@@ -4,6 +4,7 @@ import { serverGet } from "@/lib/api/server";
 import type { HealthOfficeReport } from "@/lib/api/types";
 
 import { Card, Empty, PageHeader, RangeTabs, shortDate, Stat } from "../../ui";
+import { SaveAs } from "./SaveAs";
 import { MetricCard } from "./SwingChart";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,10 @@ export default async function WfhReportPage({
         title="Work From Home"
         subtitle={`${shortDate(report.start)} – ${shortDate(report.end)}. Every metric averaged by day type.`}
       >
-        <RangeTabs basePath="/reports/wfh" current={current} options={RANGES} />
+        <div className="flex flex-wrap items-center gap-2">
+          <RangeTabs basePath="/reports/wfh" current={current} options={RANGES} />
+          {!noOfficeDaysYet && <SaveAs days={current} />}
+        </div>
       </PageHeader>
 
       {noOfficeDaysYet ? (

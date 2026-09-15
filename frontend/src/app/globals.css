@@ -210,3 +210,63 @@ body {
   --viz-axis: #cbd5e1;
   --viz-muted: #64748b;
 }
+
+/* --- Printing -------------------------------------------------------------
+ *
+ * Reports are the pages people save. The default print output of an app shell
+ * is a screenshot of the furniture: a sticky header, a 224px sidebar of links
+ * that do nothing on paper, and content squeezed into what is left.
+ *
+ * These rules are deliberately global rather than scoped to one report. Any
+ * page in the app is now worth printing, and a rule that only worked on
+ * /reports/wfh would be the kind of thing the next report quietly doesn't get.
+ * Anything a page wants kept off paper marks itself with `print:hidden`.
+ *
+ * Colours are forced to print: charts here carry meaning in colour - a band, a
+ * score, which series is which - and browsers drop backgrounds by default,
+ * which turns a scored heatmap into an empty grid.
+ */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* Print backgrounds and exact colours. Without this the viz custom
+     properties still resolve but the fills are dropped. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* The app shell. The sidebar and the sticky header are navigation, and
+     navigation is not information on paper. */
+  header,
+  aside {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  /* Cards are the natural unit of a report page, so break between them rather
+     than through the middle of a chart. */
+  .card,
+  figure,
+  table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* A link's href is invisible on paper and the underline just adds noise. */
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+}

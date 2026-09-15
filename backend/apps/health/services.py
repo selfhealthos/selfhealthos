@@ -11,9 +11,12 @@ exactly one function, `intraday`, and only ever for a single day.
 
 from __future__ import annotations
 
+import csv
+import io
 import itertools
 import logging
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 from statistics import fmean
@@ -2075,6 +2078,74 @@ _SEASON_BY_MONTH = {
     11: "spring",
 }
 _SEASON_BUCKETS = ("summer", "autumn", "winter", "spring")
+
+
+# --------------------------------------------------------------------------
+# Report exports
+# --------------------------------------------------------------------------
+
+#: The day-type buckets of `office_report`, in the order a reader expects them
+#: rather than the order the dict happens to iterate in.
+OFFICE_BUCKETS = ("wfh", "office", "weekend")
+
+
+def report_to_csv(report: dict, buckets: Sequence[str]) -> str:
+    """One report as CSV: a header block, then one row per metric.
+
+    Shared by every report that has the "metrics averaged across buckets"
+    shape, so a second export cannot drift from the first.
+
+    **Absent stays absent.** A metric with no days in a bucket writes an empty
+    cell, never `0` - the same rule the API and the charts follow, and the one
+    most likely to be lost in a format that has no null. A zero here would make
+    an unmeasured bucket look like the worst one in whatever the reader opens
+    this in.
+
+    The window and the day counts go in a small header block above the table.
+    They are the context that makes the averages mean anything, and a CSV that
+    carries only the numbers invites them being read as all-time figures.
+    """
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+
+    writer.writerow(["Report", "Work From Home" if "wfh" in buckets else "Seasons"])
+    writer.writerow(["Window start", report.get("start")])
+    writer.writerow(["Window end", report.get("end")])
+    if report.get("covers_from"):
+        writer.writerow(["Office days recorded from", report.get("covers_from")])
+        writer.writerow(["Office days recorded to", report.get("covers_to")])
+
+    days = report.get("days") or {}
+    for bucket in buckets:
+        writer.writerow([f"{bucket} days", days.get(bucket, 0)])
+    if days.get("excluded"):
+        # Named in full: "excluded" alone reads like a filter someone applied,
+        # rather than days the record genuinely cannot classify.
+        writer.writerow(["days outside the office-day record (unclassified)", days["excluded"]])
+    writer.writerow([])
+
+    writer.writerow(
+        ["metric", "label", "unit", *buckets, *[f"{b}_days" for b in buckets], "swing_pct"]
+    )
+    for metric in report.get("metrics") or []:
+        writer.writerow(
+            [
+                metric.get("metric"),
+                metric.get("label"),
+                metric.get("unit"),
+                *[_csv_number(metric.get(b)) for b in buckets],
+                *[metric.get(f"{b}_days", 0) for b in buckets],
+                _csv_number(metric.get("swing_pct")),
+            ]
+        )
+    return out.getvalue()
+
+
+def _csv_number(value) -> str:
+    """A number for a spreadsheet, or an empty cell for "not measured"."""
+    if value is None:
+        return ""
+    return f"{value:g}"
 
 
 def season_report(user, *, days: int | None = None) -> dict:

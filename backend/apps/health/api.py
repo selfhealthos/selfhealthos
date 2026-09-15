@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from uuid import UUID
 
+from django.http import HttpResponse
 from ninja import File, Form, Router, Status
 from ninja.files import UploadedFile
 
@@ -462,6 +463,32 @@ def unset_office_day(request, on: date):
 )
 def get_office_report(request, days: int | None = None):
     return services.office_report(request.auth, days=days)
+
+
+@router.get(
+    "/office/report.csv",
+    summary="The same report as a CSV download",
+    operation_id="getHealthOfficeReportCsv",
+    # No `response=`: this returns a file, not a modelled body. Declaring a
+    # schema here would put a bogus component in the OpenAPI map and generate a
+    # TypeScript type for something the frontend only ever links to.
+    response={200: None},
+)
+def get_office_report_csv(request, days: int | None = None):
+    """A real URL rather than a client-side blob.
+
+    Being an ordinary authenticated GET means it works from `curl` with a
+    `shos_pat_` token and from a browser link with a session cookie, and that
+    the download survives JavaScript being off. The filename carries the window
+    so two exports do not land in Downloads as `report.csv` and `report (1).csv`.
+    """
+    report = services.office_report(request.auth, days=days)
+    body = services.report_to_csv(report, services.OFFICE_BUCKETS)
+    response = HttpResponse(body, content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="wfh-report-{report["start"]}-to-{report["end"]}.csv"'
+    )
+    return response
 
 
 @router.get(

@@ -41,7 +41,9 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-border bg-surface p-4 ${className}`}>
+    // `card` carries no styling: it is the hook the print stylesheet binds
+    // to so a page break never lands through the middle of a chart.
+    <section className={`card rounded-xl border border-border bg-surface p-4 ${className}`}>
       {title && (
         <div className="mb-3">
           <h2 className="text-xs font-semibold tracking-wide text-ink-dim uppercase">{title}</h2>
