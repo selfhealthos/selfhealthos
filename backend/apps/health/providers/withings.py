@@ -629,6 +629,59 @@ def write_readings(user, readings: list[Reading], report: SyncReport) -> set[dat
 # --------------------------------------------------------------------------
 
 
+def fetch_readings(
+    client: Client,
+    *,
+    since: datetime,
+    until: datetime,
+    fallback_tz: ZoneInfo,
+    report: SyncReport,
+) -> list[Reading]:
+    """Page through `getmeas` for one window and parse what comes back.
+
+    Shared by the routine sync and the history backfill so the two cannot
+    disagree about paging, category or which measure types are wanted - a
+    backfill that quietly asked for a different set than the sync would leave
+    a seam in the archive at whatever date the two met.
+
+    A rate limit stops the walk and is recorded rather than raised: the pages
+    already collected are real data, and throwing them away to report the
+    limit would make a long backfill unable to make progress at all.
+    """
+    readings: list[Reading] = []
+    offset = 0
+
+    for _ in range(MAX_PAGES):
+        payload = {
+            "action": "getmeas",
+            "meastypes": ",".join(str(code) for code in WANTED_MEASTYPES),
+            "category": CATEGORY_REAL,
+            "startdate": int(since.timestamp()),
+            "enddate": int(until.timestamp()),
+            "offset": offset,
+        }
+        try:
+            body = client.call(MEASURE_URL, payload)
+        except RateLimited as exc:
+            report.stopped_early = str(exc.detail)
+            break
+
+        groups = body.get("measuregrps") or []
+        report.groups_seen += len(groups)
+        for group in groups:
+            reading = reading_from_group(group, fallback_tz=fallback_tz)
+            if reading is not None:
+                readings.append(reading)
+
+        if not body.get("more"):
+            break
+        offset = body.get("offset", 0)
+    else:
+        report.warnings.append(f"Stopped after {MAX_PAGES} pages; narrow the range and run again.")
+
+    return readings
+
+
 def sync(connection: Connection, *, start: date, end: date) -> SyncReport:
     """Pull one date range of measurements into entries.
 
@@ -648,39 +701,14 @@ def sync(connection: Connection, *, start: date, end: date) -> SyncReport:
     window_start = timeutils.utc_from_local_parts(start, time(0, 0), fallback_tz)
     window_end = timeutils.utc_from_local_parts(end, time(0, 0), fallback_tz) + timedelta(days=1)
 
-    readings: list[Reading] = []
     with Client(connection) as client:
-        offset = 0
-        for _ in range(MAX_PAGES):
-            payload = {
-                "action": "getmeas",
-                "meastypes": ",".join(str(code) for code in WANTED_MEASTYPES),
-                "category": CATEGORY_REAL,
-                "startdate": int(window_start.timestamp()),
-                "enddate": int(window_end.timestamp()),
-                "offset": offset,
-            }
-            try:
-                body = client.call(MEASURE_URL, payload)
-            except RateLimited as exc:
-                report.stopped_early = str(exc.detail)
-                break
-
-            groups = body.get("measuregrps") or []
-            report.groups_seen += len(groups)
-            for group in groups:
-                reading = reading_from_group(group, fallback_tz=fallback_tz)
-                if reading is not None:
-                    readings.append(reading)
-
-            if not body.get("more"):
-                break
-            offset = body.get("offset", 0)
-        else:
-            report.warnings.append(
-                f"Stopped after {MAX_PAGES} pages; narrow the range and sync again."
-            )
-
+        readings = fetch_readings(
+            client,
+            since=window_start,
+            until=window_end,
+            fallback_tz=fallback_tz,
+            report=report,
+        )
         report.requests = client.requests
 
     touched = write_readings(connection.user, readings, report)

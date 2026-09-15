@@ -481,3 +481,85 @@ def test_dry_run_writes_nothing(user, tmp_path):
     call_command("import_withings", path, user=user.username, dry_run=True)
 
     assert not WeightEntry.objects.filter(created_by=user).exists()
+
+
+# --------------------------------------------------------------------------
+# The history backfill
+# --------------------------------------------------------------------------
+
+
+def test_backfill_walks_past_the_sync_window(connection, monkeypatch, capsys):
+    """The point of the command: reach history the 30-day sync never can.
+
+    `connections.MAX_SYNC_DAYS` clamps the routine sync, so without this a
+    decade-old archive is unreachable from a connected account entirely.
+    """
+    old = int(datetime(2016, 9, 26, 2, 0, tzinfo=UTC).timestamp())
+    recent = int(datetime(2026, 9, 14, 21, 4, tzinfo=UTC).timestamp())
+
+    monkeypatch.setattr(
+        withings.Client,
+        "call",
+        lambda self, url, payload: {
+            "measuregrps": [
+                group(old, [(10, 132, 0), (9, 73, 0)]),
+                group(recent, [(1, 73485, -3)]),
+            ]
+        },
+    )
+    monkeypatch.setattr(withings.Client, "_ensure_token", lambda self: None)
+
+    call_command("backfill_withings", user=connection.user.username)
+
+    assert WeightEntry.objects.filter(created_by=connection.user).count() == 1
+    assert BpEntry.objects.filter(created_by=connection.user).count() == 1
+
+
+def test_backfill_dry_run_writes_nothing(connection, monkeypatch):
+    monkeypatch.setattr(
+        withings.Client,
+        "call",
+        lambda self, url, payload: {"measuregrps": [group(1_700_000_000, [(1, 73485, -3)])]},
+    )
+    monkeypatch.setattr(withings.Client, "_ensure_token", lambda self: None)
+
+    call_command("backfill_withings", user=connection.user.username, dry_run=True)
+
+    assert not WeightEntry.objects.filter(created_by=connection.user).exists()
+
+
+def test_backfill_is_idempotent_against_an_existing_sync(connection, monkeypatch):
+    """Backfill after sync must collapse into it, not double the overlap."""
+    groups = {"measuregrps": [group(1_700_000_000, [(1, 73485, -3)])]}
+    monkeypatch.setattr(withings.Client, "call", lambda self, url, payload: groups)
+    monkeypatch.setattr(withings.Client, "_ensure_token", lambda self: None)
+
+    withings.sync(connection, start=date(2023, 11, 14), end=date(2023, 11, 16))
+    call_command("backfill_withings", user=connection.user.username)
+
+    assert WeightEntry.objects.filter(created_by=connection.user).count() == 1
+
+
+def test_backfill_refuses_without_a_connection(user):
+    """Better than a confusing auth error deeper in."""
+    from django.core.management.base import CommandError
+
+    with pytest.raises(CommandError, match="no connected Withings account"):
+        call_command("backfill_withings", user=user.username)
+
+
+def test_backfill_and_sync_request_the_same_measure_types(connection, monkeypatch):
+    """A seam in the archive where the two met would be invisible afterwards."""
+    seen = []
+    monkeypatch.setattr(
+        withings.Client,
+        "call",
+        lambda self, url, payload: (seen.append(payload), {"measuregrps": []})[1],
+    )
+    monkeypatch.setattr(withings.Client, "_ensure_token", lambda self: None)
+
+    withings.sync(connection, start=date(2023, 11, 1), end=date(2023, 11, 2))
+    call_command("backfill_withings", user=connection.user.username)
+
+    assert seen[0]["meastypes"] == seen[1]["meastypes"]
+    assert seen[0]["category"] == seen[1]["category"]
