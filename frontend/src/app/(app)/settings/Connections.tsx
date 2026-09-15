@@ -13,7 +13,7 @@ import type { HealthAuthorize, HealthConnection } from "@/lib/api/types";
 // stored. There is no "show secret" affordance because there is nothing to
 // show — the API cannot return it.
 
-const SETUP_STEPS: Record<string, { url: string; steps: string[] }> = {
+const SETUP_STEPS: Record<string, { url: string; steps: string[]; note?: string }> = {
   fitbit: {
     url: "https://dev.fitbit.com/apps/new",
     steps: [
@@ -22,6 +22,26 @@ const SETUP_STEPS: Record<string, { url: string; steps: string[] }> = {
       "Copy the OAuth 2.0 Client ID and Client Secret into this form.",
     ],
   },
+  withings: {
+    url: "https://developer.withings.com/dashboard/",
+    steps: [
+      'Create an application in the Withings developer dashboard — the free "Public API" tier is what you want.',
+      "Set the Callback URI to exactly the callback shown below.",
+      "Copy the Client ID and Consumer Secret into this form.",
+    ],
+    // Worth saying before they get a rejection with no explanation: Withings
+    // refuses a plain-http callback at registration time, which is a
+    // prerequisite Fitbit does not impose and the commonest reason this stalls.
+    note: "Withings only accepts an https callback when you register it. If the URL below is http://, put the stack behind TLS first — compose.tls.yaml or your own reverse proxy.",
+  },
+};
+
+// What each provider actually brings in, so a card is not a mystery before it
+// is set up. Deliberately concrete: Withings scales differ enormously in what
+// they measure, and only weight is common to all of them.
+const PROVIDES: Record<string, string> = {
+  fitbit: "Activity, heart rate, sleep and recovery.",
+  withings: "Weight from a Withings scale, plus body fat and blood pressure where your hardware records them.",
 };
 
 export function Connections({ initial }: { initial: HealthConnection[] }) {
@@ -44,9 +64,10 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
   const [note, setNote] = useState<string | null>(null);
 
   const help = SETUP_STEPS[connection.provider];
+  const provides = PROVIDES[connection.provider];
   // From the server, not from window.location: this is the exact string the
-  // backend will send as redirect_uri, and Fitbit rejects anything that
-  // differs by a character.
+  // backend will send as redirect_uri, and every provider rejects anything
+  // that differs by a character.
   const callback = connection.redirect_uri;
 
   async function run(label: string, action: () => Promise<void>) {
@@ -68,7 +89,7 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
       // is indistinguishable from a broken one: it absorbs the click, says
       // nothing, and logs nothing anywhere.
       if (!clientId.trim()) {
-        setError("Enter the OAuth 2.0 Client ID from your Fitbit app registration.");
+        setError(`Enter the Client ID from your ${connection.label} app registration.`);
         return;
       }
       if (!clientSecret.trim() && !connection.configured) {
@@ -90,7 +111,7 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
       const result = await apiSend<HealthAuthorize>(
         `/health/connections/${connection.provider}/authorize`,
       );
-      // A full navigation, not router.push: the destination is fitbit.com.
+      // A full navigation, not router.push: the destination is the provider.
       if (result?.authorize_url) window.location.href = result.authorize_url;
     });
 
@@ -129,6 +150,10 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
         </p>
       )}
 
+      {provides && !connection.configured && (
+        <p className="mb-3 text-xs text-ink-dim">{provides}</p>
+      )}
+
       {help && !connection.configured && (
         <ol className="mb-4 ml-4 list-decimal space-y-1 text-xs text-ink-dim marker:text-ink-muted">
           {help.steps.map((step) => (
@@ -145,6 +170,15 @@ function ConnectionCard({ connection }: { connection: HealthConnection }) {
             </a>
           </li>
         </ol>
+      )}
+
+      {/* Shown only when it actually applies — the callback really is http,
+          so the registration really will be refused. A permanent warning on
+          every Withings card would be noise for anyone already on https. */}
+      {help?.note && !connection.connected && callback?.startsWith("http://") && (
+        <p className="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          {help.note}
+        </p>
       )}
 
       {callback && (
