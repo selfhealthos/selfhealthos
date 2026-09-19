@@ -57,12 +57,17 @@ mcp = MCPServer(
 
 from mcp_server.auth import ScopeMiddleware, TokenAuthMiddleware  # noqa: E402
 from mcp_server.tools import register_all  # noqa: E402
+from mcp_server.validation import StrictArgumentsMiddleware  # noqa: E402
 
 register_all(mcp)
 
 # Innermost, so it runs after the SDK's own request-state boundary has built
 # the context and can still see the raw method and params.
 mcp.middleware.append(ScopeMiddleware())
+
+# After the scope gate: an argument check is not an access decision, and a
+# caller holding the wrong scope should hear about the scope first.
+mcp.middleware.append(StrictArgumentsMiddleware(mcp))
 
 
 @mcp.custom_route("/healthz", methods=["GET"], include_in_schema=False)

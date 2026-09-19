@@ -117,8 +117,34 @@ class LogResult(BaseModel):
     summary: str
 
 
+#: A query made only of these means "everything", not a literal search for the
+#: character. Asking a search tool for `*` is the obvious way to say "show me
+#: the lot", and returning zero hits for it reads as "you have no data".
+WILDCARDS = frozenset("*%")
+
+
 def _iso(value) -> str | None:
     return value.isoformat() if value else None
+
+
+def _one_date(primary: str | None, alias: str | None) -> date | None:
+    """Parse the day argument, accepting either spelling.
+
+    `date` is what a caller reaches for; `on` is what this tool was originally
+    named. Both are declared, because an argument the tool does not declare is
+    dropped by the protocol layer without complaint - and a dropped day
+    argument silently falls back to "the latest day", which looks exactly like
+    the tool ignoring what it was asked for.
+    """
+    if primary is not None and alias is not None and primary != alias:
+        raise ValueError("Pass the day once: `date` and `on` were both given and disagree.")
+    raw = primary if primary is not None else alias
+    if raw is None:
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except (AttributeError, ValueError):
+        raise ValueError(f"{raw!r} is not an ISO date; use YYYY-MM-DD.") from None
 
 
 def _describe_direction(first: float | None, second: float | None) -> str:
@@ -209,20 +235,22 @@ def register(mcp) -> None:
         return await run_orm(_query)
 
     @scoped_tool(mcp, scope="health:read")
-    async def health_day(on: str | None = None) -> HealthDay:
+    async def health_day(date: str | None = None, on: str | None = None) -> HealthDay:
         """Everything recorded for one day: sleep, activity, heart, food,
         training, gut, habits and notes.
 
-        `on` is an ISO date. Omit it for the most recent day holding data,
-        which is usually more useful than today - the watch syncs in batches,
-        so today is often empty until the evening.
+        `date` is an ISO date, YYYY-MM-DD (`on` is accepted as an alias). Omit
+        it for the most recent day holding data, which is usually more useful
+        than today - the watch syncs in batches, so today is often empty until
+        the evening.
         """
+        wanted = _one_date(date, on)
 
         def _query() -> HealthDay:
             from apps.health import services
 
             user = require_user()
-            day = date.fromisoformat(on) if on else services.latest_day_with_data(user)
+            day = wanted if wanted is not None else services.latest_day_with_data(user)
             if day is None:
                 raise ValueError("There is no health data for this account yet.")
 
@@ -374,6 +402,8 @@ def register(mcp) -> None:
         """Free-text search across diary notes and the food diary.
 
         For "when did I last eat X" or "what did I write about my knee".
+        Pass `*` to browse everything, most recent first, rather than
+        guessing a word that might be in there.
         """
 
         def _query() -> SearchResult:
@@ -382,17 +412,18 @@ def register(mcp) -> None:
             user = require_user()
             text = (query or "").strip()
             if not text:
-                raise ValueError("Provide something to search for.")
+                raise ValueError("Provide something to search for, or `*` for everything.")
             capped = max(1, min(limit, MAX_SEARCH_RESULTS))
 
-            notes = Note.objects.filter(created_by=user, deleted_at__isnull=True).filter(
-                title__icontains=text
-            ) | Note.objects.filter(created_by=user, deleted_at__isnull=True).filter(
-                content__icontains=text
-            )
-            foods = DietEntry.objects.filter(
-                created_by=user, deleted_at__isnull=True, name__icontains=text
-            )
+            live_notes = Note.objects.filter(created_by=user, deleted_at__isnull=True)
+            foods = DietEntry.objects.filter(created_by=user, deleted_at__isnull=True)
+            if set(text) <= WILDCARDS:
+                notes = live_notes
+            else:
+                notes = live_notes.filter(title__icontains=text) | live_notes.filter(
+                    content__icontains=text
+                )
+                foods = foods.filter(name__icontains=text)
 
             hits = [
                 SearchHit(
@@ -425,14 +456,17 @@ def register(mcp) -> None:
         text: str = "",
         systolic: int | None = None,
         diastolic: int | None = None,
+        date: str | None = None,
         on: str | None = None,
     ) -> LogResult:
         """Record a health entry.
 
         `kind` is one of: weight (value in kg), bp (systolic and diastolic),
         bm (value 1-7 on the Bristol scale), food (text), note (text).
-        `on` is an ISO date, defaulting to today in the subject's timezone.
+        `date` is an ISO date, YYYY-MM-DD (`on` is accepted as an alias),
+        defaulting to today in the subject's timezone.
         """
+        when = _one_date(date, on)
 
         def _mutate() -> LogResult:
             from apps.health import services
@@ -445,7 +479,7 @@ def register(mcp) -> None:
                 text=text,
                 systolic=systolic,
                 diastolic=diastolic,
-                on=date.fromisoformat(on) if on else None,
+                on=when,
             )
             return LogResult(
                 created=True,
