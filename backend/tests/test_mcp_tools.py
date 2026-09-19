@@ -77,7 +77,7 @@ def test_health_search_wildcard_returns_everything(diary):
     """`*` matched nothing literally, which reads as "you have no data"."""
     result = call("health_search", diary, query="*")
     assert result.matched == 3
-    assert {h.text for h in result.hits} == {"sardines and potatoes", "oatmeal", "knee"}
+    assert {h.text for h in result.hits} == {"sardines and potatoes", "oatmeal", "knee felt fine"}
 
 
 @pytest.mark.django_db(transaction=True)
@@ -114,3 +114,47 @@ def test_unknown_arguments_are_refused_not_dropped():
 
 def test_declared_arguments_pass_through():
     assert _run({"date": "2026-09-15"}) == "reached the tool"
+
+
+BLOCKS = '[{"t":"text","v":"slept a lot last night, have been sick this week and had a day off"}]'
+
+
+@pytest.fixture
+def blocky_note(user):
+    """A note as the Android app writes it: block JSON, title a 60-char prefix."""
+    Note.objects.create(
+        created_by=user,
+        title="slept a lot last night, have been sick this week and had a d",
+        content=BLOCKS,
+        local_date=dt.date(2026, 9, 14),
+        occurred_at=dt.datetime(2026, 9, 14, 12, tzinfo=dt.UTC),
+    )
+    return user
+
+
+@pytest.mark.django_db(transaction=True)
+def test_health_day_returns_the_whole_note(blocky_note):
+    """The title is a truncated prefix; reporting it loses the sentence."""
+    (note,) = call("health_day", blocky_note, date="2026-09-14").notes
+    assert note.summary.endswith("had a day off")
+    assert '"t":"text"' not in note.summary
+
+
+@pytest.mark.django_db(transaction=True)
+def test_health_search_returns_the_whole_note(blocky_note):
+    (hit,) = call("health_search", blocky_note, query="sick").hits
+    assert hit.text.endswith("had a day off")
+    assert '"t":"text"' not in hit.text
+
+
+@pytest.mark.django_db(transaction=True)
+def test_untitled_note_is_not_raw_block_json(user):
+    Note.objects.create(
+        created_by=user,
+        title="",
+        content=BLOCKS,
+        local_date=dt.date(2026, 9, 14),
+        occurred_at=dt.datetime(2026, 9, 14, 12, tzinfo=dt.UTC),
+    )
+    (note,) = call("health_day", user, date="2026-09-14").notes
+    assert note.summary.startswith("slept a lot")

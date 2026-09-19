@@ -127,6 +127,26 @@ def _iso(value) -> str | None:
     return value.isoformat() if value else None
 
 
+def _note_summary(title: str, content: str) -> str:
+    """A note as a reader would see it: the whole thing.
+
+    Two traps, both of which produced a plausible-looking wrong answer rather
+    than an error. The Android app stores `title` as a 60-character prefix of
+    the body, so a summary built from the title alone silently truncates every
+    note mid-sentence. And `content` is a JSON block array for anything the
+    app wrote, so falling back to it raw emits `[{"t":"text","v":...}]`.
+    `services.note_body` is the one place that knows both formats.
+    """
+    from apps.health.services import note_body
+
+    body = note_body(content).strip()
+    heading = (title or "").strip()
+    # The title is usually a prefix of the body, not a heading of its own.
+    if not heading or body.startswith(heading):
+        return body or heading
+    return f"{heading}\n{body}" if body else heading
+
+
 def _one_date(primary: str | None, alias: str | None) -> date | None:
     """Parse the day argument, accepting either spelling.
 
@@ -279,7 +299,7 @@ def register(mcp) -> None:
                     DayEntry(at=_iso(e["at"]), summary=f"Bristol {e['bristol']}") for e in view.bm
                 ],
                 notes=[
-                    DayEntry(at=_iso(e["at"]), summary=e["title"] or e["content"][:200])
+                    DayEntry(at=_iso(e["at"]), summary=_note_summary(e["title"], e["content"]))
                     for e in view.notes
                 ],
                 habits_done=[h["name"] for h in view.habits if h["completed"]],
@@ -429,7 +449,7 @@ def register(mcp) -> None:
                 SearchHit(
                     kind="note",
                     date=n.local_date.isoformat(),
-                    text=(n.title or n.content)[:300],
+                    text=_note_summary(n.title, n.content)[:1000],
                 )
                 for n in notes.order_by("-local_date")[: capped + 1]
             ] + [

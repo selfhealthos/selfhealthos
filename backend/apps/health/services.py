@@ -1409,7 +1409,7 @@ def lab_history(user) -> list[dict]:
 NOTE_LIMIT = 200
 
 
-def _note_body(content: str) -> str:
+def note_body(content: str) -> str:
     """Plain text from a note, whichever format it was written in.
 
     The Android app changed `content` from plain text to a JSON block array
@@ -1453,7 +1453,7 @@ def note_list(user, *, search: str | None = None, limit: int = NOTE_LIMIT) -> li
         {
             "id": note.id,
             "title": note.title,
-            "body": _note_body(note.content),
+            "body": note_body(note.content),
             "at": note.occurred_at,
             "local_date": note.local_date,
         }
@@ -1644,7 +1644,7 @@ def entries_for_day(user, on: date | None = None) -> dict:
         )
 
     for entry in Note.objects.filter(**live):
-        body = _note_body(entry.content)
+        body = note_body(entry.content)
         preview = body[:80] + ("…" if len(body) > 80 else "")
         rows.append(
             {
