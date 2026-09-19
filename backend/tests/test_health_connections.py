@@ -1102,3 +1102,28 @@ def test_re_syncing_clears_zeros_stored_before_the_check_existed(alex):
     run_sync(connection, {**fitbit_responses(), **_activity(**NOT_WORN)})
 
     assert activity_values(alex) == {}
+
+
+def test_awakenings_come_from_the_stage_summary(alex):
+    """`awakeCount` is classic-sleep only, so it read 0 on every staged night."""
+    connection = connected(alex)
+    responses = _with_levels()
+    responses["/sleep/date/"]["sleep"][0]["levels"]["summary"]["wake"] = {
+        "minutes": 20,
+        "count": 7,
+    }
+
+    run_sync(connection, responses)
+
+    assert SleepSession.objects.get(user=alex).awakenings_count == 7
+
+
+def test_awakenings_fall_back_to_the_classic_field(alex):
+    """An older device sends no stages at all; its count still has to land."""
+    connection = connected(alex)
+    responses = fitbit_responses()
+    responses["/sleep/date/"]["sleep"][0]["awakeCount"] = 4
+
+    run_sync(connection, responses)
+
+    assert SleepSession.objects.get(user=alex).awakenings_count == 4

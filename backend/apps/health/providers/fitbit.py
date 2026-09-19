@@ -986,7 +986,7 @@ def _sleep_session(user, session: dict, *, day: date | None = None) -> bool:
             "minutes_light": _stage(stages, "light"),
             "minutes_rem": _stage(stages, "rem"),
             "minutes_awake": _stage(stages, "wake") or int(session.get("minutesAwake") or 0),
-            "awakenings_count": int(session.get("awakeCount") or 0),
+            "awakenings_count": _awakenings(session, stages),
             "is_main_sleep": bool(session.get("isMainSleep", True)),
         },
     )
@@ -996,6 +996,25 @@ def _sleep_session(user, session: dict, *, day: date | None = None) -> bool:
 
 def _stage(summary: dict, name: str) -> int:
     return int(((summary.get(name) or {}).get("minutes")) or 0)
+
+
+def _awakenings(session: dict, stages: dict) -> int:
+    """How many times the night was broken.
+
+    Not `session["awakeCount"]`, which is where this used to look: that field
+    belongs to the old classic-sleep summary and is simply absent from the
+    stages payload every modern device returns. Absent read as
+    `int(None or 0)`, so the metric was 0 on every night ever recorded - a
+    number that looked measured, charted fine, and meant nothing.
+
+    `levels.summary` carries the count beside the minutes `_stage` already
+    reads: `wake` for a staged night, `awake` for a classic one.
+    """
+    for name in ("wake", "awake"):
+        count = (stages.get(name) or {}).get("count")
+        if count is not None:
+            return int(count)
+    return int(session.get("awakeCount") or 0)
 
 
 #: Fitbit's level names, mapped onto the model's. Anything unrecognised is
