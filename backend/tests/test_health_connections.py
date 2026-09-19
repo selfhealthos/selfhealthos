@@ -949,3 +949,64 @@ def test_a_night_without_spo2_is_not_an_error(alex):
 
     assert report.warnings == []
     assert Sample.objects.filter(user=alex, metric="spo2").count() == 0
+
+
+# --------------------------------------------------------------------------
+# Scheduled syncing
+# --------------------------------------------------------------------------
+
+
+def test_undecryptable_credentials_mark_the_connection_for_reconnection(alex):
+    """A rotated key is permanent, so it must not keep reading as healthy.
+
+    `run_sync` only caught `DomainError`, so `CannotDecrypt` escaped as an
+    unhandled exception: `last_sync_error` stayed empty and the status stayed
+    `connected`. The settings page then reported a live Fitbit connection
+    every day for a month while collecting nothing.
+    """
+    connection = connected(alex)
+
+    with (
+        patch.object(conn_services, "_module", return_value=fitbit),
+        patch.object(fitbit, "sync", side_effect=crypto.CannotDecrypt("key rotated")),
+    ):
+        report = conn_services.run_sync(str(connection.pk))
+
+    connection.refresh_from_db()
+    assert connection.status == Connection.Status.EXPIRED
+    assert "key rotated" in connection.last_sync_error
+    assert "key rotated" in report["error"]
+
+
+def test_scheduled_sync_queues_live_connections_only(alex, sam):
+    """The beat job is what makes "connect once" true; a dead grant is skipped."""
+    from apps.health import tasks
+
+    live = connected(alex)
+    dead = connected(sam)
+    Connection.objects.filter(pk=dead.pk).update(status=Connection.Status.EXPIRED)
+
+    with (
+        patch.object(tasks.sync_connection, "delay") as queued,
+        patch.object(tasks.rebuild_daily_metrics, "apply_async") as rollup,
+    ):
+        assert tasks.sync_due_connections() == 1
+
+    assert [call.args[0] for call in queued.call_args_list] == [str(live.pk)]
+    assert rollup.call_count == 1
+
+
+def test_scheduled_sync_rebuilds_each_user_once(alex):
+    """Two providers on one account is one rollup, not two."""
+    from apps.health import tasks
+
+    connected(alex)
+    connected(alex, provider=Connection.Provider.WITHINGS)
+
+    with (
+        patch.object(tasks.sync_connection, "delay"),
+        patch.object(tasks.rebuild_daily_metrics, "apply_async") as rollup,
+    ):
+        assert tasks.sync_due_connections() == 2
+
+    assert rollup.call_count == 1

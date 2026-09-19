@@ -129,6 +129,33 @@ services:
       retries: 3
       start_period: 30s
 
+  # The clock. Without it nothing ever asks Fitbit for new data: there is no
+  # webhook, the phone does not push, and a connection would sync only on the
+  # day it was linked - while still reporting itself healthy, because no sync
+  # ran to fail.
+  #
+  # Exactly one replica. Two beats means two of every scheduled job, which for
+  # a Fitbit pull means burning the hourly rate limit twice as fast.
+  beat:
+    <<: *backend-base
+    command:
+      - celery
+      - -A
+      - selfhealthos
+      - beat
+      - --loglevel=INFO
+      # /tmp, not the working directory: the schedule file is scratch state
+      # rebuilt on boot, and writing it into /app fails on a read-only mount.
+      - --schedule=/tmp/celerybeat-schedule
+    healthcheck:
+      # Beat answers no ping - it is a producer, not a worker - so the check is
+      # that the process is alive and has written its schedule file.
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat-schedule"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   next:
     build:
       context: ./frontend

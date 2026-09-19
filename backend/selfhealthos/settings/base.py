@@ -155,6 +155,8 @@ CSRF_COOKIE_SAMESITE = "Lax"
 
 REDIS_URL = env("REDIS_URL")
 
+SYNC_INTERVAL_S = env.int("SYNC_INTERVAL_S", 3600)
+
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_TASK_SERIALIZER = "json"
@@ -164,6 +166,23 @@ CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+#: Wearable data only arrives if something asks for it. Fitbit has no webhook
+#: here and the phone does not push, so without a schedule a connection syncs
+#: on the day it is linked and never again - visible as a dashboard that
+#: quietly stops, with the connection still reading `connected` and no error.
+#:
+#: Hourly, not daily: Fitbit backfills last night's sleep stages and resting
+#: heart rate hours after the fact, and the sync window deliberately overlaps
+#: (see `connections.sync_window`), so a re-run picks up corrections rather
+#: than duplicating work. The per-provider hourly rate limit is the reason
+#: this is not more often than hourly.
+CELERY_BEAT_SCHEDULE = {
+    "sync-wearables-hourly": {
+        "task": "health.sync_due_connections",
+        "schedule": SYNC_INTERVAL_S,
+    },
+}
 
 CACHES = {
     "default": {

@@ -28,6 +28,7 @@ from django.utils import timezone
 from apps.core.exceptions import DomainError, NotFound
 from apps.core.services import record_event
 
+from .crypto import CannotDecrypt
 from .models import Connection
 from .providers import fitbit, withings
 
@@ -287,6 +288,20 @@ def run_sync(connection_pk: str, *, days: int | None = None) -> dict:
         )
         logger.warning("sync failed for connection %s: %s", connection.pk, exc.detail)
         return {"error": str(exc.detail)}
+    except CannotDecrypt as exc:
+        # Credentials encrypted under a key that no longer exists. Every
+        # future sync will fail the same way, so this is a dead grant in
+        # everything but name and is recorded as one - left `connected` it
+        # reports itself healthy forever while quietly returning nothing,
+        # which is exactly how a month of missing data goes unnoticed.
+        message = str(exc)
+        Connection.objects.filter(pk=connection.pk).update(
+            status=Connection.Status.EXPIRED,
+            last_sync_at=timezone.now(),
+            last_sync_error=message[:1000],
+        )
+        logger.warning("connection %s needs reconnecting: %s", connection.pk, message)
+        return {"error": message}
 
     _finish(connection, report)
     return report.as_dict()

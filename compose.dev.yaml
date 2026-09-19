@@ -64,6 +64,23 @@ services:
       - --concurrency=2
       - --queues=celery
 
+  beat:
+    <<: *backend-dev
+    command:
+      - watchmedo
+      - auto-restart
+      - --debug-force-polling
+      - --directory=/app
+      - --pattern=*.py
+      - --recursive
+      - --
+      - celery
+      - -A
+      - selfhealthos
+      - beat
+      - --loglevel=INFO
+      - --schedule=/tmp/celerybeat-schedule
+
   next:
     build:
       context: ./frontend
