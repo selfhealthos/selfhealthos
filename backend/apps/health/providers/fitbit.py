@@ -760,6 +760,14 @@ def _range_heart(client, user, start, end, report) -> None:
 
 
 def _range_activity(client, user, start, end, report) -> None:
+    """The activity series, with days the watch was not worn left empty.
+
+    Collected per day before writing, rather than written as each series
+    arrives, because non-wear is only visible across metrics: the single
+    `steps: 0` entry is indistinguishable from a genuinely still day until you
+    can also see that Fitbit called the whole 24 hours sedentary.
+    """
+    by_day: dict[date, dict[str, float]] = {}
     for resource, metric in ACTIVITY_RANGES:
         body = client.get(
             f"/1/user/-/activities/{resource}/date/{start:%Y-%m-%d}/{end:%Y-%m-%d}.json"
@@ -768,10 +776,47 @@ def _range_activity(client, user, start, end, report) -> None:
             day = timeutils.parse_date(entry.get("dateTime"))
             if day is None:
                 continue
-            values: dict[str, float] = {}
-            _put(values, metric, entry.get("value"))
-            if values:
-                report.daily_metrics_written += _write_daily(user, day, values)
+            _put(by_day.setdefault(day, {}), metric, entry.get("value"))
+
+    for day, values in by_day.items():
+        if _not_worn(values):
+            # Delete rather than skip: the zeros are probably already stored
+            # from a sync that ran before this check existed, and leaving them
+            # means the correction never reaches the days that need it.
+            report.daily_metrics_written -= _clear_activity(user, day)
+            continue
+        if values:
+            report.daily_metrics_written += _write_daily(user, day, values)
+
+
+def _not_worn(values: dict[str, float]) -> bool:
+    """Was the watch off all day?
+
+    Fitbit answers for every date in a range whether or not anything was
+    recorded, and a day with no device on a wrist comes back fully populated
+    with zeros: no steps, no distance, no active minutes, the full 1,440
+    minutes marked sedentary, and calories set to the BMR estimate. Stored as
+    written, that is not a gap - it is the worst day in the dataset, dragging
+    every mean down and inverting trend directions. Three such days in six
+    weeks were enough to make falling step counts read as rising.
+
+    The test is deliberately narrow. `steps == 0` alone is not enough (a dead
+    battery mid-morning is a real partial day), and a low-but-real day like
+    1,594 steps against 1,356 sedentary minutes must survive: a whole
+    *calendar* day of sedentary minutes is the part no worn device produces.
+    """
+    return values.get("steps") == 0 and values.get("sedentary_minutes") == 1440
+
+
+def _clear_activity(user, day: date) -> int:
+    """Drop the device-written activity rows for one day."""
+    deleted, _ = DailyMetric.objects.filter(
+        user=user,
+        local_date=day,
+        source=DailyMetric.Source.DEVICE,
+        metric__in=[metric for _resource, metric in ACTIVITY_RANGES],
+    ).delete()
+    return deleted
 
 
 def _write_daily(user, day: date, values: dict[str, float]) -> int:

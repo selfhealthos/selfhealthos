@@ -1010,3 +1010,95 @@ def test_scheduled_sync_rebuilds_each_user_once(alex):
         assert tasks.sync_due_connections() == 2
 
     assert rollup.call_count == 1
+
+
+# --------------------------------------------------------------------------
+# Days the watch was not worn
+# --------------------------------------------------------------------------
+
+
+def _activity(**totals) -> dict:
+    """Override the activity range payloads with a given set of totals."""
+    return {
+        f"/activities/{resource}/date/": {
+            f"activities-{resource}": [{"dateTime": f"{DAY:%Y-%m-%d}", "value": str(total)}]
+        }
+        for resource, total in totals.items()
+    }
+
+
+NOT_WORN = {
+    "steps": 0,
+    "distance": 0,
+    "floors": 0,
+    "calories": 1683,  # the BMR estimate, not anything measured
+    "minutesSedentary": 1440,
+    "minutesLightlyActive": 0,
+    "minutesFairlyActive": 0,
+    "minutesVeryActive": 0,
+}
+
+
+def activity_values(user) -> dict[str, float]:
+    return dict(
+        DailyMetric.objects.filter(
+            user=user,
+            local_date=DAY,
+            metric__in=[metric for _resource, metric in fitbit.ACTIVITY_RANGES],
+        ).values_list("metric", "value")
+    )
+
+
+def test_a_day_the_watch_was_not_worn_stores_no_activity(alex):
+    """Fitbit answers for every date in the range, worn or not.
+
+    An unworn day comes back fully populated with zeros and a flat 1,440
+    sedentary minutes. Stored as written it is not a gap, it is the worst day
+    in the dataset - and it drags every mean down and inverts trend directions.
+    """
+    connection = connected(alex)
+
+    run_sync(connection, {**fitbit_responses(), **_activity(**NOT_WORN)})
+
+    assert activity_values(alex) == {}
+
+
+def test_a_genuinely_quiet_day_is_kept(alex):
+    """1,594 steps against 1,356 sedentary minutes is a real day, not a gap.
+
+    The whole *calendar* day of sedentary minutes is the part no worn device
+    produces; a low step count on its own must survive.
+    """
+    connection = connected(alex)
+    quiet = {**NOT_WORN, "steps": 1594, "minutesSedentary": 1356, "minutesLightlyActive": 84}
+
+    run_sync(connection, {**fitbit_responses(), **_activity(**quiet)})
+
+    assert activity_values(alex)["steps"] == 1594
+
+
+def test_a_partial_day_is_kept(alex):
+    """A battery that died at lunchtime is still a measurement."""
+    connection = connected(alex)
+    partial = {**NOT_WORN, "minutesSedentary": 700}
+
+    run_sync(connection, {**fitbit_responses(), **_activity(**partial)})
+
+    assert activity_values(alex)["steps"] == 0
+
+
+def test_re_syncing_clears_zeros_stored_before_the_check_existed(alex):
+    """The correction has to reach days already in the table, or it never lands."""
+    connection = connected(alex)
+    for metric, value in (("steps", 0.0), ("sedentary_minutes", 1440.0), ("floors", 0.0)):
+        DailyMetric.objects.create(
+            user=alex,
+            local_date=DAY,
+            metric=metric,
+            value=value,
+            source=DailyMetric.Source.DEVICE,
+        )
+
+    run_sync(connection, {**fitbit_responses(), **_activity(**NOT_WORN)})
+
+    assert activity_values(alex) == {}
